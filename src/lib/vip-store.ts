@@ -1,7 +1,8 @@
 // Shared by server routes and the standalone daily job; never import in a client component.
 import { createHash, randomUUID } from "node:crypto";
-import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { vipExpiry, type VipChange } from "./vip-rules.ts";
+import { hasVipExpiryColumn } from "./vip-schema.ts";
 
 export class VipError extends Error {
   status: number;
@@ -50,6 +51,14 @@ async function audit(c: PoolConnection, row: VipRow, level: number, expiry: stri
 }
 
 export async function changeVip(pool: Pool, accountId: number, change: VipChange, actor: string) {
+  if (!(await hasVipExpiryColumn(pool))) {
+    const [result] = await pool.execute<ResultSetHeader>(
+      "UPDATE accounts SET vip=? WHERE AccountID=?",
+      [change.level, accountId],
+    );
+    if (result.affectedRows === 0) throw new VipError("Conta não encontrada.", 404);
+    return { level: change.level, expiresAt: null, vipExpirySupported: false };
+  }
   const hash = createHash("sha256").update(JSON.stringify({ accountId, actor, ...change })).digest("hex");
   const c = await pool.getConnection();
   try {
@@ -60,7 +69,7 @@ export async function changeVip(pool: Pool, accountId: number, change: VipChange
     if (existing.length) {
       if (existing[0].payload_hash !== hash) throw new VipError("Identificador de operação já utilizado.", 409);
       await c.commit();
-      return { level: Number(existing[0].new_level), expiresAt: iso(existing[0].new_expiry) };
+      return { level: Number(existing[0].new_level), expiresAt: iso(existing[0].new_expiry), vipExpirySupported: true };
     }
     const [clock] = await c.query<RowDataPacket[]>("SELECT UTC_TIMESTAMP() now");
     let expiry: string | null;
@@ -69,12 +78,15 @@ export async function changeVip(pool: Pool, accountId: number, change: VipChange
     await c.execute("UPDATE accounts SET vip=?, vip_expires_at=? WHERE AccountID=?", [change.level, sqlDate(expiry), accountId]);
     await audit(c, rows[0], change.level, expiry, actor, change.operation, change.requestId, hash);
     await c.commit();
-    return { level: change.level, expiresAt: expiry };
+    return { level: change.level, expiresAt: expiry, vipExpirySupported: true };
   } catch (error) { await c.rollback(); throw error; }
   finally { c.release(); }
 }
 
 export async function expireVip(pool: Pool, dryRun = false) {
+  if (!(await hasVipExpiryColumn(pool))) {
+    return { skipped: true, processed: 0, reason: "vip_expires_at_missing" };
+  }
   const c = await pool.getConnection();
   const id = randomUUID();
   let locked = false;
@@ -113,6 +125,20 @@ export async function expireVip(pool: Pool, dryRun = false) {
 }
 
 export async function vipOverview(accounts: Pool, characters: Pool) {
+  const vipExpirySupported = await hasVipExpiryColumn(accounts);
+  if (!vipExpirySupported) {
+    const [accountResult, characterResult] = await Promise.all([
+      accounts.query<RowDataPacket[]>(`SELECT COUNT(*) totalAccounts,
+        SUM(vip BETWEEN 1 AND 3) activeVip,
+        0 legacyVip,
+        0 expiredVip, 0 expiringVip,
+        SUM(vip=1) vip1, SUM(vip=2) vip2, SUM(vip=3) vip3,
+        SUM(vip NOT IN (0,1,2,3)) invalidVip FROM accounts`),
+      characters.query<RowDataPacket[]>("SELECT COUNT(*) totalCharacters, SUM(is_online=1) onlineCharacters, COUNT(DISTINCT CASE WHEN is_online=1 THEN AccountID END) onlineAccounts FROM characters"),
+    ]);
+    const totals = Object.fromEntries(Object.entries({ ...accountResult[0][0], ...characterResult[0][0] }).map(([key, value]) => [key, Number(value ?? 0)]));
+    return { totals, upcoming: [], lastRun: null, vipExpirySupported, updatedAt: new Date().toISOString() };
+  }
   const active = "vip BETWEEN 1 AND 3 AND vip_expires_at > UTC_TIMESTAMP()";
   const [accountResult, characterResult, upcomingResult, runResult] = await Promise.all([
     accounts.query<RowDataPacket[]>(`SELECT COUNT(*) totalAccounts,
@@ -127,5 +153,5 @@ export async function vipOverview(accounts: Pool, characters: Pool) {
     accounts.query<RowDataPacket[]>("SELECT id, started_at startedAt, finished_at finishedAt, status, processed, error_message error FROM admin_vip_runs ORDER BY started_at DESC LIMIT 1"),
   ]);
   const totals = Object.fromEntries(Object.entries({ ...accountResult[0][0], ...characterResult[0][0] }).map(([key, value]) => [key, Number(value ?? 0)]));
-  return { totals, upcoming: upcomingResult[0], lastRun: runResult[0][0] ?? null, updatedAt: new Date().toISOString() };
+  return { totals, upcoming: upcomingResult[0], lastRun: runResult[0][0] ?? null, vipExpirySupported, updatedAt: new Date().toISOString() };
 }

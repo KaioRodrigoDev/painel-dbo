@@ -217,7 +217,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
                   <span className="chevron">⌄</span>
                 </summary>
                 <div className="accountDetails">
-                  <div className="vipAccountActions"><span>Validade VIP: <strong>{account.vip === 0 ? "Sem VIP" : vipDate(account.vipExpiresAt)}</strong></span>{["active", "expiring", "legacy"].includes(vipStatus(account.vip, account.vipExpiresAt)) && <button className="mailVipButton" onClick={() => setMailingAccount(account)}>✉ Enviar item</button>}<button className="secondaryButton" onClick={() => setVipEditing({ account, renew: false })}>Gerenciar VIP</button><button className="secondaryButton" onClick={() => setVipEditing({ account, renew: true })}>Renovar VIP</button></div>
+                  <div className="vipAccountActions"><span>Validade VIP: <strong>{account.vip === 0 ? "Sem VIP" : data.vipExpirySupported ? vipDate(account.vipExpiresAt) : "Indisponível neste banco"}</strong></span>{["active", "expiring", "legacy"].includes(vipStatus(account.vip, account.vipExpiresAt)) && <button className="mailVipButton" onClick={() => setMailingAccount(account)}>✉ Enviar item</button>}<button className="secondaryButton" onClick={() => setVipEditing({ account, renew: false })}>Gerenciar VIP</button>{data.vipExpirySupported && <button className="secondaryButton" onClick={() => setVipEditing({ account, renew: true })}>Renovar VIP</button>}</div>
                   <div className="accountFacts">
                     <span>Último login <strong>{formatDate(account.lastLogin)}</strong></span>
                     <span>Cash <strong>{formatNumber(account.mallPoints)}</strong></span>
@@ -272,7 +272,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
         )}
       </section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
 
-      {vipEditing && <VipEditor account={vipEditing.account} renew={vipEditing.renew} onClose={() => setVipEditing(null)} onSaved={message => { setVipEditing(null); setActionMessage(message); setOverviewVersion(value => value + 1); if (activeView === "players") void loadAccounts(); }} />}
+      {vipEditing && <VipEditor account={vipEditing.account} renew={vipEditing.renew} expirySupported={data?.vipExpirySupported ?? true} onClose={() => setVipEditing(null)} onSaved={message => { setVipEditing(null); setActionMessage(message); setOverviewVersion(value => value + 1); if (activeView === "players") void loadAccounts(); }} />}
       {mailingAccount && <AdminMailEditor account={mailingAccount} onClose={() => setMailingAccount(null)} onSaved={message => { setMailingAccount(null); setActionMessage(message); }} />}
       {groupMailLevel && <VipGroupMailEditor initialLevel={groupMailLevel} onClose={() => setGroupMailLevel(null)} onSaved={message => { setGroupMailLevel(null); setActionMessage(message); }} />}
       {editing && (

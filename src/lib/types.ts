@@ -43,6 +43,7 @@ export type AccountSummary = {
 
 export type AccountsResponse = {
   accounts: AccountSummary[];
+  vipExpirySupported: boolean;
   page: number;
   pageSize: number;
   total: number;

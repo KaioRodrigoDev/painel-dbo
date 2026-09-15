@@ -4,6 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { ensureAdminSchema, getAccountPool, getCharacterPool } from "@/lib/db";
 import { loadItemCatalog } from "@/lib/item-catalog";
 import { getAccountDatabaseConfig } from "@/lib/env";
+import { hasVipExpiryColumn } from "@/lib/vip-schema";
 
 export type AdminMailRequest = {
   requestKey: string;
@@ -21,9 +22,10 @@ export async function requestAdminMail(input: AdminMailRequest, administrator: s
   await ensureAdminSchema();
   const accountPool = getAccountPool();
   const characterPool = getCharacterPool();
+  const vipExpirySupported = await hasVipExpiryColumn(accountPool);
   const [[accountRows], [characterRows], catalog] = await Promise.all([
     accountPool.execute<(RowDataPacket & { vip: number; vip_expires_at: Date | null })[]>(
-      "SELECT vip, vip_expires_at FROM accounts WHERE AccountID=? LIMIT 1", [input.accountId]),
+      `SELECT vip, ${vipExpirySupported ? "vip_expires_at" : "NULL AS vip_expires_at"} FROM accounts WHERE AccountID=? LIMIT 1`, [input.accountId]),
     characterPool.execute<(RowDataPacket & { CharID: number; CharName: string })[]>(
       "SELECT CharID, CharName FROM characters WHERE AccountID=? ORDER BY CharID ASC LIMIT 1", [input.accountId]),
     loadItemCatalog(),
@@ -71,10 +73,13 @@ export async function requestAdminMail(input: AdminMailRequest, administrator: s
   } finally { connection.release(); }
 }
 
-const activeVipSql = "a.vip=? AND (a.vip_expires_at IS NULL OR a.vip_expires_at > UTC_TIMESTAMP())";
+const activeVipSql = (vipExpirySupported: boolean) => vipExpirySupported
+  ? "a.vip=? AND (a.vip_expires_at IS NULL OR a.vip_expires_at > UTC_TIMESTAMP())"
+  : "a.vip=?";
 
 export async function previewVipMailGroup(level: number) {
   await ensureAdminSchema();
+  const vipExpirySupported = await hasVipExpiryColumn(getAccountPool());
   const accountDatabase = getAccountDatabaseConfig().database.replace(/`/g, "``");
   const [rows] = await getCharacterPool().execute<(RowDataPacket & { total: number; fullMailboxes: number })[]>(`
     SELECT COUNT(*) total,
@@ -83,7 +88,7 @@ export async function previewVipMailGroup(level: number) {
     JOIN (SELECT AccountID, MIN(CharID) CharID FROM characters GROUP BY AccountID) first_character
       ON first_character.AccountID=c.AccountID AND first_character.CharID=c.CharID
     JOIN \`${accountDatabase}\`.accounts a ON a.AccountID=c.AccountID
-    WHERE ${activeVipSql}`, [level]);
+    WHERE ${activeVipSql(vipExpirySupported)}`, [level]);
   const total = Number(rows[0]?.total ?? 0);
   const fullMailboxes = Number(rows[0]?.fullMailboxes ?? 0);
   return { total, fullMailboxes, eligible: total - fullMailboxes };
@@ -93,6 +98,7 @@ export async function requestVipGroupMail(input: {
   batchKey: string; vipLevel: number; itemTblidx: number; quantity: number; message: string;
 }, administrator: string) {
   await ensureAdminSchema();
+  const vipExpirySupported = await hasVipExpiryColumn(getAccountPool());
   const catalog = await loadItemCatalog();
   const item = catalog.items.find(entry => entry.tblidx === input.itemTblidx);
   if (!item?.valid) throw new AdminMailError("Item inexistente ou inválido no catálogo do servidor.");
@@ -123,7 +129,7 @@ export async function requestVipGroupMail(input: {
       JOIN (SELECT AccountID, MIN(CharID) CharID FROM characters GROUP BY AccountID) first_character
         ON first_character.AccountID=c.AccountID AND first_character.CharID=c.CharID
       JOIN \`${accountDatabase}\`.accounts a ON a.AccountID=c.AccountID
-      WHERE ${activeVipSql} AND (SELECT COUNT(*) FROM mail m WHERE m.CharID=c.CharID) < 30`, [
+      WHERE ${activeVipSql(vipExpirySupported)} AND (SELECT COUNT(*) FROM mail m WHERE m.CharID=c.CharID) < 30`, [
       item.tblidx, item.name.slice(0, 100), input.quantity, item.rank, item.durability,
       item.battleAttribute, item.itemOptionTblidx, item.durationType, item.useDurationMax,
       input.message, administrator.slice(0, 64), input.vipLevel,

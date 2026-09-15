@@ -1,6 +1,7 @@
 param(
   [switch]$Force,
-  [switch]$SkipMailMigration
+  [switch]$SkipMailMigration,
+  [switch]$MigrateVip
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,8 +40,10 @@ try {
   & $panelNpm ci
   if ($LASTEXITCODE -ne 0) { throw 'npm ci falhou.' }
 
-  & $panelNpm run vip:migrate
-  if ($LASTEXITCODE -ne 0) { throw 'A migracao VIP falhou.' }
+  if ($MigrateVip) {
+    & $panelNpm run vip:migrate
+    if ($LASTEXITCODE -ne 0) { throw 'A migracao VIP falhou.' }
+  }
 
   if (-not $SkipMailMigration) {
     & $panelNpm run mail:migrate

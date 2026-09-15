@@ -20,7 +20,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (!session) return Response.json({ error: "Sessão expirada." }, { status: 401 });
   try {
     const result = await changeVip(getAccountPool(), Number(id), parsed.data, session.username);
-    return Response.json({ ...result, message: "VIP salvo no banco. Sessões do jogo já abertas podem manter o nível anterior até a recarga da conta." });
+    const message = result.vipExpirySupported
+      ? "VIP salvo no banco. Sessões do jogo já abertas podem manter o nível anterior até a recarga da conta."
+      : "Nível VIP salvo. A validade ficará indisponível até a coluna vip_expires_at ser criada neste servidor.";
+    return Response.json({ ...result, message });
   } catch (error) {
     if (error instanceof VipError) return Response.json({ error: error.message }, { status: error.status });
     console.error("Falha ao atualizar VIP", error);

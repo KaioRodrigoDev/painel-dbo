@@ -17,6 +17,7 @@ import type {
   CharacterSummary,
   EditableCharacterFields,
 } from "@/lib/types";
+import { hasVipExpiryColumn } from "@/lib/vip-schema";
 
 declare global {
   var __dbowAccountPool: Pool | undefined;
@@ -221,6 +222,7 @@ export async function listAccounts(options: {
   const offset = (page - 1) * pageSize;
   const term = `%${search}%`;
   const accountPool = getAccountPool();
+  const vipExpirySupported = await hasVipExpiryColumn(accountPool);
 
   const clauses: string[] = [];
   if (search) clauses.push("(Username LIKE ? OR CAST(AccountID AS CHAR) = ?)");
@@ -228,13 +230,21 @@ export async function listAccounts(options: {
   if (options.vipLevel && options.vipLevel !== "all") {
     clauses.push("vip = ?"); parameters.push(options.vipLevel);
   }
-  const states: Record<string, string> = {
+  const states: Record<string, string> = vipExpirySupported ? {
     none: "vip = 0",
     active: "vip BETWEEN 1 AND 3 AND vip_expires_at > UTC_TIMESTAMP()",
     current: "vip BETWEEN 1 AND 3 AND (vip_expires_at > UTC_TIMESTAMP() OR vip_expires_at IS NULL)",
     legacy: "vip BETWEEN 1 AND 3 AND vip_expires_at IS NULL",
     expired: "vip BETWEEN 1 AND 3 AND vip_expires_at <= UTC_TIMESTAMP()",
     expiring: "vip BETWEEN 1 AND 3 AND vip_expires_at > UTC_TIMESTAMP() AND vip_expires_at <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY)",
+    invalid: "vip NOT IN (0,1,2,3)",
+  } : {
+    none: "vip = 0",
+    active: "vip BETWEEN 1 AND 3",
+    current: "vip BETWEEN 1 AND 3",
+    legacy: "vip BETWEEN 1 AND 3",
+    expired: "1 = 0",
+    expiring: "1 = 0",
     invalid: "vip NOT IN (0,1,2,3)",
   };
   if (options.vipState && states[options.vipState]) clauses.push(`(${states[options.vipState]})`);
@@ -247,7 +257,8 @@ export async function listAccounts(options: {
 
   const [accountRows] = await accountPool.execute<AccountRow[]>(
     `SELECT AccountID, Username, acc_status, email, admin, isGm,
-            mallpoints, reg_date, last_login, vip, vip_expires_at
+            mallpoints, reg_date, last_login, vip,
+            ${vipExpirySupported ? "vip_expires_at" : "NULL AS vip_expires_at"}
        FROM accounts
        ${where}
       ORDER BY AccountID DESC
@@ -306,6 +317,7 @@ export async function listAccounts(options: {
 
   return {
     accounts,
+    vipExpirySupported,
     page,
     pageSize,
     total,

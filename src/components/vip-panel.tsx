@@ -15,7 +15,7 @@ export function VipBadge({ account }: { account: VipAccount }) {
   return <span className={`vipBadge vip-${status}`}>{account.vip === 0 ? "Sem VIP" : `VIP ${account.vip} · ${vipLabels[status]}`}</span>;
 }
 
-export function VipEditor({ account, renew, onClose, onSaved }: { account: VipAccount; renew: boolean; onClose: () => void; onSaved: (message: string) => void }) {
+export function VipEditor({ account, renew, expirySupported, onClose, onSaved }: { account: VipAccount; renew: boolean; expirySupported: boolean; onClose: () => void; onSaved: (message: string) => void }) {
   const [previewNow] = useState(() => new Date());
   const [level, setLevel] = useState(renew && account.vip === 0 ? 1 : account.vip);
   const [duration, setDuration] = useState<VipChange["duration"]>(!renew && account.vipExpiresAt && Date.parse(account.vipExpiresAt) > previewNow.getTime() ? "keep" : "30");
@@ -31,6 +31,7 @@ export function VipEditor({ account, renew, onClose, onSaved }: { account: VipAc
   let valid = true;
   try { const expiry = vipExpiry(change, account.vipExpiresAt, previewNow); if (expiry) preview = vipDate(expiry); }
   catch (cause) { valid = false; preview = cause instanceof Error ? cause.message : "Selecione a validade."; }
+  if (!expirySupported) { valid = true; preview = "Indisponível neste banco"; }
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -51,13 +52,13 @@ export function VipEditor({ account, renew, onClose, onSaved }: { account: VipAc
     <form onSubmit={save}>
       <fieldset disabled={pending} className="vipFieldset"><div className="formGrid">
         <label>Nível<select value={level} onChange={event => setLevel(Number(event.target.value))}>{!renew && <option value={0}>0 · Sem VIP</option>}{[1, 2, 3].map(value => <option key={value} value={value}>VIP {value}</option>)}</select></label>
-        {level > 0 && <label>Validade<select value={duration} onChange={event => setDuration(event.target.value as VipChange["duration"])}>
+        {level > 0 && expirySupported && <label>Validade<select value={duration} onChange={event => setDuration(event.target.value as VipChange["duration"])}>
           {!renew && account.vipExpiresAt && Date.parse(account.vipExpiresAt) > previewNow.getTime() && <option value="keep">Manter validade atual</option>}
           <option value="15">15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option><option value="date">Data personalizada</option>
         </select></label>}
-        {level > 0 && duration === "date" && <label>Último dia de VIP<input type="date" required value={date} onChange={event => setDate(event.target.value)} /></label>}
+        {level > 0 && expirySupported && duration === "date" && <label>Último dia de VIP<input type="date" required value={date} onChange={event => setDate(event.target.value)} /></label>}
       </div></fieldset>
-      <div className="readonlyNotice"><strong>Validade atual: {account.vip === 0 ? "Sem VIP" : vipDate(account.vipExpiresAt)}</strong><span>Nova validade: {preview} (horário de São Paulo).</span><span>{renew ? "Os dias restantes são preservados na renovação por período." : "Alterar somente o nível permite manter a validade atual."} O prazo final é calculado ao salvar.</span></div>
+      <div className="readonlyNotice"><strong>Validade atual: {account.vip === 0 ? "Sem VIP" : expirySupported ? vipDate(account.vipExpiresAt) : "Indisponível neste banco"}</strong><span>Nova validade: {preview}{expirySupported ? " (horário de São Paulo)." : "."}</span><span>{expirySupported ? `${renew ? "Os dias restantes são preservados na renovação por período." : "Alterar somente o nível permite manter a validade atual."} O prazo final é calculado ao salvar.` : "Somente o nível VIP será atualizado até a coluna vip_expires_at ser criada."}</span></div>
       <p className="muted">O jogo pode manter o nível anterior em sessões abertas até recarregar a conta.</p>
       {error && <p className="formError" role="alert">{error}</p>}
       <div className="modalActions"><button type="button" className="ghostButton" disabled={pending} onClick={onClose}>Cancelar</button><button className="primaryButton compact" disabled={pending || !valid}>{pending ? "Salvando..." : renew ? "Confirmar renovação" : "Salvar VIP"}</button></div>
@@ -69,6 +70,7 @@ type Overview = {
   totals: Record<string, number>;
   upcoming: { accountId: number; username: string; vip: number; expiresAt: string }[];
   lastRun: { startedAt: string; finishedAt: string | null; status: string; processed: number; error: string | null } | null;
+  vipExpirySupported: boolean;
   updatedAt: string;
 };
 export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccounts: (state?: string, level?: string) => void; onRenew: (account: VipAccount) => void; onBulkMail: (level: number) => void }) {
@@ -93,17 +95,20 @@ export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccount
     {error && <div className="errorBanner" role="alert">{error}</div>}
     {!data && !error && <div className="overviewLoading"><span className="spinner" /><div><strong>Montando sua visão geral</strong><small>Consultando contas, jogadores e VIPs...</small></div></div>}
     {data && t && <>
+      {!data.vipExpirySupported && <div className="errorBanner"><strong>Validade VIP indisponível</strong><span>Este banco ainda não possui a coluna vip_expires_at. Os níveis VIP continuam visíveis e editáveis.</span></div>}
       <div className="overviewStats">
         <button className="overviewStat overviewStatPrimary" onClick={() => onAccounts()}><span className="overviewStatIcon">◎</span><span className="overviewStatText"><small>CONTAS CADASTRADAS</small><strong>{t.totalAccounts.toLocaleString("pt-BR")}</strong><em>Ver todas as contas <b>→</b></em></span></button>
         <div className="overviewStat"><span className="overviewStatIcon blue">♟</span><span className="overviewStatText"><small>PERSONAGENS</small><strong>{t.totalCharacters.toLocaleString("pt-BR")}</strong><em><i className="onlinePulse" /> {t.onlineCharacters} online em {t.onlineAccounts} contas</em></span></div>
-        <button className="overviewStat" onClick={() => onAccounts("current")}><span className="overviewStatIcon gold">★</span><span className="overviewStatText"><small>VIPs VIGENTES</small><strong>{t.activeVip + t.legacyVip}</strong><em>{t.activeVip} com validade definida <b>→</b></em></span></button>
-        <button className={`overviewStat ${t.expiringVip > 0 ? "attention" : ""}`} onClick={() => onAccounts("expiring")}><span className="overviewStatIcon amber">◷</span><span className="overviewStatText"><small>VENCEM EM 7 DIAS</small><strong>{t.expiringVip}</strong><em>{t.expiringVip > 0 ? "Precisam de atenção" : "Tudo tranquilo"} <b>→</b></em></span></button>
+        <button className="overviewStat" onClick={() => onAccounts("current")}><span className="overviewStatIcon gold">★</span><span className="overviewStatText"><small>VIPs VIGENTES</small><strong>{t.activeVip + t.legacyVip}</strong><em>{data.vipExpirySupported ? `${t.activeVip} com validade definida` : "Contados pelo nível VIP"} <b>→</b></em></span></button>
+        {data.vipExpirySupported
+          ? <button className={`overviewStat ${t.expiringVip > 0 ? "attention" : ""}`} onClick={() => onAccounts("expiring")}><span className="overviewStatIcon amber">◷</span><span className="overviewStatText"><small>VENCEM EM 7 DIAS</small><strong>{t.expiringVip}</strong><em>{t.expiringVip > 0 ? "Precisam de atenção" : "Tudo tranquilo"} <b>→</b></em></span></button>
+          : <div className="overviewStat"><span className="overviewStatIcon amber">◷</span><span className="overviewStatText"><small>VALIDADE VIP</small><strong>—</strong><em>Coluna ainda não disponível</em></span></div>}
       </div>
 
       <div className="overviewVipGrid">
         <article className="overviewSection vipDistribution">
           <header><div><span className="overviewSectionIcon">★</span><div><h3>Distribuição VIP</h3><p>Assinaturas ativas por nível</p></div></div><button onClick={() => onAccounts("current")}>Ver todos <span>→</span></button></header>
-          <div className="vipTotal"><div><small>TOTAL VIGENTE</small><strong>{t.activeVip + t.legacyVip}</strong></div><span>{t.legacyVip > 0 ? `${t.legacyVip} sem validade` : "Todos com validade"}</span></div>
+          <div className="vipTotal"><div><small>TOTAL VIGENTE</small><strong>{t.activeVip + t.legacyVip}</strong></div><span>{data.vipExpirySupported ? (t.legacyVip > 0 ? `${t.legacyVip} sem validade` : "Todos com validade") : "Validade indisponível"}</span></div>
           <div className="vipLevelList">{[1, 2, 3].map(level => {
             const count = t[`vip${level}`];
             const percentage = t.activeVip ? Math.round((count / t.activeVip) * 100) : 0;
@@ -114,14 +119,14 @@ export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccount
           <div className="vipBulkActions"><span>Enviar item para um grupo:</span>{[1, 2, 3].map(level => <button key={level} onClick={() => onBulkMail(level)}>✉ VIP {level}</button>)}</div>
         </article>
 
-        <aside className="overviewSideStack">
+        {data.vipExpirySupported && <aside className="overviewSideStack">
           <button className={`vipSignal vipSignalWarning ${t.legacyVip === 0 ? "quiet" : ""}`} onClick={() => onAccounts("legacy")}><span>!</span><div><small>SEM VALIDADE</small><strong>{t.legacyVip}</strong><p>{t.legacyVip === 1 ? "VIP precisa" : "VIPs precisam"} de regularização</p></div><b>→</b></button>
           <button className={`vipSignal vipSignalDanger ${t.expiredVip === 0 ? "quiet" : ""}`} onClick={() => onAccounts("expired")}><span>×</span><div><small>VENCIDOS</small><strong>{t.expiredVip}</strong><p>Aguardando processamento</p></div><b>→</b></button>
           {t.invalidVip > 0 && <button className="vipSignal vipSignalDanger" onClick={() => onAccounts("invalid")}><span>?</span><div><small>NÍVEL INVÁLIDO</small><strong>{t.invalidVip}</strong><p>Contas precisam de revisão</p></div><b>→</b></button>}
-        </aside>
+        </aside>}
       </div>
 
-      <article className="overviewSection vipExpirySection">
+      {data.vipExpirySupported && <article className="overviewSection vipExpirySection">
         <header><div><span className="overviewSectionIcon clock">◷</span><div><h3>Próximos vencimentos</h3><p>VIPs ordenados pela data mais próxima</p></div></div><span className="expiryCount">{data.upcoming.length} exibidos</span></header>
         <div className="vipUpcoming">{data.upcoming.length ? data.upcoming.map(account => <article key={account.accountId}>
           <span className={`upcomingVipIcon level${account.vip}`}>V{account.vip}</span>
@@ -130,9 +135,9 @@ export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccount
           <div className="upcomingDate"><small>VENCIMENTO</small><strong>{vipDate(account.expiresAt)}</strong></div>
           <button className="renewVipButton" onClick={() => onRenew({ ...account, vipExpiresAt: account.expiresAt })}>Renovar <span>→</span></button>
         </article>) : <div className="vipEmptyState"><span>✓</span><div><strong>Nenhum vencimento futuro</strong><p>Não há assinaturas VIP com prazo para exibir.</p></div></div>}</div>
-      </article>
+      </article>}
 
-      <footer className={`vipJobStatus ${data.lastRun?.status ?? "unknown"}`}><span className="jobStatusIcon">{data.lastRun?.status === "success" ? "✓" : data.lastRun?.status === "running" ? "↻" : "!"}</span><div><strong>Rotina automática de expiração</strong><p>{data.lastRun ? `Última execução em ${vipDate(data.lastRun.startedAt)} · ${data.lastRun.processed} contas processadas` : "Nenhuma execução registrada"}</p>{data.lastRun?.error && <small role="alert">{data.lastRun.error}</small>}{data.lastRun && Date.parse(data.updatedAt) - Date.parse(data.lastRun.startedAt) > 26 * 3600000 && <small role="alert">A rotina está atrasada. Verifique o agendador.</small>}</div><span className="jobSchedule"><small>PRÓXIMA ROTINA</small><strong>Todos os dias · 00h05</strong><em>Horário de São Paulo</em></span></footer>
+      {data.vipExpirySupported && <footer className={`vipJobStatus ${data.lastRun?.status ?? "unknown"}`}><span className="jobStatusIcon">{data.lastRun?.status === "success" ? "✓" : data.lastRun?.status === "running" ? "↻" : "!"}</span><div><strong>Rotina automática de expiração</strong><p>{data.lastRun ? `Última execução em ${vipDate(data.lastRun.startedAt)} · ${data.lastRun.processed} contas processadas` : "Nenhuma execução registrada"}</p>{data.lastRun?.error && <small role="alert">{data.lastRun.error}</small>}{data.lastRun && Date.parse(data.updatedAt) - Date.parse(data.lastRun.startedAt) > 26 * 3600000 && <small role="alert">A rotina está atrasada. Verifique o agendador.</small>}</div><span className="jobSchedule"><small>PRÓXIMA ROTINA</small><strong>Todos os dias · 00h05</strong><em>Horário de São Paulo</em></span></footer>}
     </>}
   </section>;
 }

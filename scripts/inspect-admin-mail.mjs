@@ -42,6 +42,11 @@ try {
   const [batchTables] = await pool.query("SHOW TABLES LIKE 'admin_mail_batches'");
   const [batchCount] = batchTables.length ? await pool.query("SELECT COUNT(*) total FROM admin_mail_batches") : [[{ total: 0 }]];
   const accountDatabase = process.env.ACCOUNT_DB_NAME;
+  const [expiryColumns] = await pool.query(`SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA=? AND TABLE_NAME='accounts' AND COLUMN_NAME='vip_expires_at' LIMIT 1`, [accountDatabase]);
+  const activeVip = expiryColumns.length
+    ? "a.vip BETWEEN 1 AND 3 AND (a.vip_expires_at IS NULL OR a.vip_expires_at>UTC_TIMESTAMP())"
+    : "a.vip BETWEEN 1 AND 3";
   if (!/^[A-Za-z0-9_]+$/.test(accountDatabase ?? "")) throw new Error("ACCOUNT_DB_NAME inválido.");
   const [groups] = await pool.query(`SELECT a.vip vipLevel,COUNT(*) total,
     COALESCE(SUM((SELECT COUNT(*) FROM mail m WHERE m.CharID=c.CharID)>=30),0) fullMailboxes
@@ -49,6 +54,6 @@ try {
     JOIN (SELECT AccountID, MIN(CharID) CharID FROM characters GROUP BY AccountID) first_character
       ON first_character.AccountID=c.AccountID AND first_character.CharID=c.CharID
     JOIN \`${accountDatabase}\`.accounts a ON a.AccountID=c.AccountID
-    WHERE a.vip BETWEEN 1 AND 3 AND (a.vip_expires_at IS NULL OR a.vip_expires_at>UTC_TIMESTAMP()) GROUP BY a.vip ORDER BY a.vip`);
+    WHERE ${activeVip} GROUP BY a.vip ORDER BY a.vip`);
   console.log({ tableExists: tables.length === 1, columns: columns.length, requests: counts, batchTableExists: batchTables.length === 1, batches: Number(batchCount[0]?.total ?? 0), groupPreview: groups });
 } finally { await pool.end(); }
