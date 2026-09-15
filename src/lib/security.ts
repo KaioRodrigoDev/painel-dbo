@@ -22,7 +22,34 @@ export function validateAdminCredentials(username: string, password: string) {
 export function hasSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return false;
-  return origin === new URL(request.url).origin;
+
+  let normalizedOrigin: string;
+  try {
+    normalizedOrigin = new URL(origin).origin;
+  } catch {
+    return false;
+  }
+  if (normalizedOrigin !== origin) return false;
+
+  const requestUrl = new URL(request.url);
+  const acceptedOrigins = new Set([requestUrl.origin]);
+  const forwardedHost = (request.headers.get("x-forwarded-host") ?? request.headers.get("host"))
+    ?.split(",")[0]?.trim();
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+
+  if (
+    forwardedHost &&
+    !/[\s/\\]/.test(forwardedHost) &&
+    (forwardedProto === "http" || forwardedProto === "https")
+  ) {
+    try {
+      acceptedOrigins.add(new URL(`${forwardedProto}://${forwardedHost}`).origin);
+    } catch {
+      return false;
+    }
+  }
+
+  return acceptedOrigins.has(normalizedOrigin);
 }
 
 export async function authorizeApiRequest(request: Request, mutation = false) {
