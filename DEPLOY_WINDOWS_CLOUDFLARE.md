@@ -73,6 +73,14 @@ Get-ScheduledTask DboWorld-Admin-Panel,DboWorld-Admin-Vip-Expiry
 
 Os logs do painel ficam em `data\logs`.
 
+### Atualizar o QueryServer do correio
+
+O arquivo `deploy\queryserver\QueryServer.exe` acompanha a versão do consumidor
+que entrega o anexo selado, igual ao comando `itema`. Desligue o QueryServer,
+faça backup do executável atual, substitua-o por esse arquivo e inicie o serviço
+novamente. A inicialização também corrige anexos administrativos antigos que
+ainda não foram retirados do correio.
+
 ## 3. Criar o Cloudflare Tunnel
 
 No painel Cloudflare Zero Trust:
