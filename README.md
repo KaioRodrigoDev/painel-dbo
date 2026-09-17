@@ -2,7 +2,8 @@
 
 Para instalar no Windows Server e publicar por Cloudflare Tunnel, siga
 `DEPLOY_WINDOWS_CLOUDFLARE.md`. O guia inclui um perfil inicial somente para
-dashboard, contas, personagens, VIP e correio, sem exigir os arquivos RDF.
+dashboard, contas, personagens, VIP e entregas pelo Cash Shop. O catálogo usado
+nessas entregas lê as tabelas RDF de itens e produtos HLS do servidor.
 
 Painel administrativo local para consultar contas do Dbo World e editar dados seguros de personagens offline.
 
@@ -81,14 +82,18 @@ Se usar HTTPS, altere `ADMIN_COOKIE_SECURE=true`.
 - Renovação antecipada por 15, 30 ou 60 dias, preservando o prazo restante, ou por data personalizada.
 - Auditoria transacional e proteção contra renovação duplicada após reenvio da mesma operação.
 - Expiração diária independente do painel aberto.
-- Envio de itens do catálogo para personagens de contas VIP pelo correio do jogo.
+- Envio de itens para qualquer conta filtrada na lista de jogadores, por Cash Shop ou correio.
+- Lotes VIP por nível: Cash Shop para a conta ou correio de um personagem escolhido por conta. A escolha do personagem fica salva para o próximo lote.
+- Pacotes reutilizáveis de até 20 itens para correio individual ou VIP em grupo. Os pacotes ficam em `data/mail-packages/*.json` no servidor e não entram no Git; inclua essa pasta no backup do painel.
 
-O envio pelo correio usa a fila `admin_mail_items`. O painel registra a solicitação e o QueryServer cria o item com o contador oficial, evitando colisões de ID. Depois de instalar uma versão nova do painel e do QueryServer, a tabela pode ser preparada e conferida com:
+O Cash Shop usa `admin_cashshop_items` em `dbo_acc` e aceita itens com entrada na tabela do Cash Shop. O correio usa `admin_mail_items` em `dbo_char` e aceita itens válidos do catálogo. Por padrão, o item chega com aparência normal; a opção "Enviar selado" faz o item virar ovo no inventário até o jogador retirar o selo. O QueryServer processa ambas as filas. Depois de instalar a versão nova do painel e do QueryServer, prepare e confira as tabelas com:
 
 ```powershell
 npm run mail:migrate
 npm run mail:inspect
 ```
+
+Cada item de um pacote gera uma mensagem de correio separada. As definições dos pacotes existem apenas nos arquivos do servidor; `admin_mail_package_dispatches` guarda somente o controle dos envios para evitar duplicação ao reenviar a mesma solicitação.
 
 ## Limites de segurança
 

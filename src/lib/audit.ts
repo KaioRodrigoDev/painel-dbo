@@ -38,7 +38,13 @@ type SkillAuditEntry = {
   details?: Record<string, unknown>;
 };
 
-type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry;
+type MailPackageAuditEntry = {
+  administrator: string;
+  action: "mail.package_create" | "mail.package_update" | "mail.package_delete";
+  target: string;
+};
+
+type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry;
 
 export async function writeAuditLog(entry: AuditEntry) {
   const auditDirectory = path.join(process.cwd(), "data");

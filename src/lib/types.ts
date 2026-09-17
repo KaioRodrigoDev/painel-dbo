@@ -172,6 +172,8 @@ export type ItemCatalogEntry = {
   disassembleUpperMax: number;
   dropVisual: number;
   useDisassemble: number;
+  cashShopTblidx?: number;
+  cashShopStack?: number;
 };
 
 export type ItemCatalogResponse = {
@@ -382,4 +384,34 @@ export type SkillPublishPreview = {
   confirmationToken: string | null;
   /** Pasta pack do cliente sugerida no formulário de publicação. */
   defaultClientPackDirectory: string;
+};
+
+export type DeliveryEntry = {
+  id: number;
+  channel: "mail" | "cashshop";
+  accountId: number;
+  username: string | null;
+  characterId: number | null;
+  characterName: string | null;
+  itemTblidx: number;
+  itemName: string;
+  quantity: number;
+  requestedBy: string;
+  status: string;
+  deliveryId: number | null;
+  itemInstanceId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  claimedAt: string | null;
+  claimedByCharacterId: number | null;
+};
+
+export type DeliveriesResponse = {
+  deliveries: DeliveryEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  counts: { total: number; claimed: number; available: number; failed: number };
 };

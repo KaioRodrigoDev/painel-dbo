@@ -3,7 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { loadItemCatalog } from "@/lib/item-catalog";
+import { loadCashShopItemMappings, loadItemCatalog } from "@/lib/item-catalog";
 import { authorizeApiRequest } from "@/lib/security";
 import type { ItemCatalogResponse } from "@/lib/types";
 
@@ -14,6 +14,7 @@ const querySchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
   itemType: z.coerce.number().int().min(0).max(255).optional(),
   rank: z.coerce.number().int().min(0).max(255).optional(),
+  cashShop: z.enum(["0", "1"]).default("0"),
 });
 
 export async function GET(request: Request) {
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
     page: url.searchParams.get("page") ?? "1",
     itemType: url.searchParams.get("itemType") ?? undefined,
     rank: url.searchParams.get("rank") ?? undefined,
+    cashShop: url.searchParams.get("cashShop") ?? "0",
   });
   if (!parsed.success) {
     return NextResponse.json({ error: "Consulta inválida." }, { status: 400 });
@@ -34,6 +36,7 @@ export async function GET(request: Request) {
 
   try {
     const catalog = await loadItemCatalog();
+    const cashShopMappings = parsed.data.cashShop === "1" ? await loadCashShopItemMappings() : null;
     const search = parsed.data.search.toLocaleLowerCase();
     const filtered = catalog.items.filter((item) => {
       const matchesSearch =
@@ -45,6 +48,7 @@ export async function GET(request: Request) {
         String(item.tblidx).includes(search);
       return (
         matchesSearch &&
+        (!cashShopMappings || cashShopMappings.has(item.tblidx)) &&
         (parsed.data.itemType === undefined || item.itemType === parsed.data.itemType) &&
         (parsed.data.rank === undefined || item.rank === parsed.data.rank)
       );
@@ -54,7 +58,10 @@ export async function GET(request: Request) {
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     const page = Math.min(parsed.data.page, totalPages);
     const response: ItemCatalogResponse = {
-      items: filtered.slice((page - 1) * pageSize, page * pageSize),
+      items: filtered.slice((page - 1) * pageSize, page * pageSize).map((item) => {
+        const mapping = cashShopMappings?.get(item.tblidx);
+        return mapping ? { ...item, cashShopTblidx: mapping.tblidx, cashShopStack: mapping.stack } : item;
+      }),
       page,
       pageSize,
       total: filtered.length,

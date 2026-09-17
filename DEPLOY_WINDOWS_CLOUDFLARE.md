@@ -1,7 +1,7 @@
 # Publicar o painel no Windows Server com Cloudflare Tunnel
 
 Esta primeira publicacao suporta as partes que usam os bancos `dbo_acc` e
-`dbo_char`: dashboard, contas, personagens, VIP, vencimentos e fila do correio.
+`dbo_char`: dashboard, contas, personagens, VIP, vencimentos e fila do Cash Shop.
 RDF, packs e controle dos executaveis do jogo ficam para uma atualizacao futura.
 
 O painel escuta somente em `127.0.0.1:3000`. O Cloudflare Tunnel cria a conexao
@@ -14,7 +14,7 @@ HTTPS externa sem abrir as portas 3000 ou 3306 no firewall.
 - Git.
 - MySQL/MariaDB local com `dbo_acc` e `dbo_char`.
 - Um dominio adicionado a uma conta Cloudflare.
-- QueryServer atualizado e em execucao para consumir a fila de correio.
+- QueryServer atualizado e em execucao para consumir a fila do Cash Shop.
 
 ## 1. Clonar e configurar
 
@@ -54,7 +54,7 @@ Set-Location C:\dbow\painel-admin
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-production.ps1
 ```
 
-O instalador executa `npm ci`, aplica a migracao do correio, cria o build e
+O instalador executa `npm ci`, aplica a migracao do Cash Shop, cria o build e
 registra estas tarefas no Agendador do Windows:
 
 - `DboWorld-Admin-Panel`: inicia junto com o Windows e reinicia se falhar.
@@ -73,13 +73,12 @@ Get-ScheduledTask DboWorld-Admin-Panel,DboWorld-Admin-Vip-Expiry
 
 Os logs do painel ficam em `data\logs`.
 
-### Atualizar o QueryServer do correio
+### Atualizar o QueryServer para Cash Shop e correio
 
-O arquivo `deploy\queryserver\QueryServer.exe` acompanha a versão do consumidor
-que entrega o anexo selado, igual ao comando `itema`. Desligue o QueryServer,
+O arquivo `deploy\queryserver\QueryServer.exe` acompanha a versão que entrega
+produtos no Cash Shop e itens selados no correio do personagem escolhido. Desligue o QueryServer,
 faça backup do executável atual, substitua-o por esse arquivo e inicie o serviço
-novamente. A inicialização também corrige anexos administrativos antigos que
-ainda não foram retirados do correio.
+novamente. Execute `npm run mail:migrate` antes de testar o correio.
 
 ## 3. Criar o Cloudflare Tunnel
 
@@ -129,8 +128,8 @@ O `.env.local` e os dados locais sao preservados porque ficam fora do Git.
 - Dashboard e contas carregam dados dos dois bancos.
 - Alteracao de nivel VIP funciona; validade e renovacao aparecem depois da migracao.
 - A tarefa VIP apresenta estado `Ready` depois de uma execucao manual.
-- Solicitar um item cria registro em `admin_mail_items`.
-- O QueryServer transforma a solicitacao pendente em correio dentro do jogo.
+- Solicitar um item cria registro em `admin_cashshop_items`.
+- O QueryServer transforma a solicitacao pendente em produto no Cash Shop da conta.
 
 As paginas de itens, skills, mobs, arvore e servidores podem apresentar erro de
 arquivo nesta fase. Elas dependem de `DBOW_GAME_ROOT` e serao habilitadas quando

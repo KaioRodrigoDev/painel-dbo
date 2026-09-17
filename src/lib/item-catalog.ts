@@ -6,6 +6,7 @@ import type { ItemCatalogEntry } from "@/lib/types";
 
 const HEADER_SIZE = 1;
 const RECORD_SIZE = 372;
+const HLS_RECORD_SIZE = 20;
 
 type CatalogCache = {
   path: string;
@@ -131,6 +132,28 @@ export function resolveItemCatalogPath() {
 
 export function resolveItemTextCatalogPath() {
   return resolveServerTable("table_text_all_data.rdf", "ITEM_TEXT_TABLE_PATH");
+}
+
+export function resolveCashShopCatalogPath() {
+  return resolveServerTable("table_hls_item_data.rdf", "HLS_ITEM_TABLE_PATH");
+}
+
+export async function loadCashShopItemMappings() {
+  const buffer = await readFile(/* turbopackIgnore: true */ resolveCashShopCatalogPath());
+  if (buffer.length <= HEADER_SIZE || (buffer.length - HEADER_SIZE) % HLS_RECORD_SIZE !== 0) {
+    throw new Error(`Formato de table_hls_item_data.rdf incompatível: ${buffer.length} bytes.`);
+  }
+
+  const mappings = new Map<number, { tblidx: number; stack: number; onSale: boolean }>();
+  for (let offset = HEADER_SIZE; offset < buffer.length; offset += HLS_RECORD_SIZE) {
+    const tblidx = buffer.readUInt32LE(offset);
+    const itemTblidx = buffer.readUInt32LE(offset + 4);
+    const onSale = buffer.readUInt8(offset + 9) !== 0;
+    const stack = Math.max(1, buffer.readUInt8(offset + 16));
+    const current = mappings.get(itemTblidx);
+    if (!current || (onSale && !current.onSale)) mappings.set(itemTblidx, { tblidx, stack, onSale });
+  }
+  return mappings;
 }
 
 function parseLocalizedItemNames(buffer: Buffer) {

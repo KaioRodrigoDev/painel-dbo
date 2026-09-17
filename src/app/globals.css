@@ -945,7 +945,44 @@ button.overviewStat:hover { transform: translateY(-2px); border-color: rgba(255,
 .vipFieldset { padding: 0; border: 0; margin: 0; }
 .vipDialog .readonlyNotice { display: grid; gap: 10px; }
 .mailVipButton { min-height: 36px; padding: 0 14px; color: var(--navy); border: 1px solid #d8aa00; border-radius: 8px; background: linear-gradient(180deg, var(--gold), #e5ae00); font-size: 11px; font-weight: 900; box-shadow: var(--shadow-3d); }
-.mailEditorDialog { width: min(680px, calc(100% - 24px)); }
+.mailEditorDialog { width: min(980px, calc(100% - 24px)); max-height: min(92vh, 960px); }
+.mailChannelSwitch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.mailChannelSwitch button { display: grid; gap: 5px; padding: 16px; color: var(--ink); text-align: left; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.03); font-weight: 900; }
+.mailChannelSwitch button.active { border-color: var(--gold); background: rgba(255,215,0,.09); box-shadow: inset 0 0 0 1px rgba(255,215,0,.12); }
+.mailChannelSwitch small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.mailDestinationPanel { display: grid; gap: 5px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03); }
+.mailDestinationPanel .mailField { margin: 8px 0; }
+.mailDestinationPanel small { color: var(--muted); }
+.mailSealOption { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
+.mailSealOption input { flex: 0 0 auto; margin-top: 3px; accent-color: var(--gold); }
+.mailSealOption span { display: grid; gap: 4px; }
+.mailSealOption small { color: var(--muted); font-weight: 400; line-height: 1.4; }
+.mailPackagePanel { display: grid; gap: 12px; margin: 18px 0; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
+.mailPackageHeader, .mailPackageComposerTitle, .mailPackageActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mailPackageHeader > div { display: grid; gap: 5px; }
+.mailPackageHeader small, .mailPackageItems small { color: var(--muted); }
+.mailPackagePanel > select, .mailPackageComposer input { width: 100%; padding: 11px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--panel-solid); }
+.mailPackageSummary, .mailPackageComposer { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.mailPackageComposer .mailField { margin: 4px 0; }
+.mailPackageItems { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+.mailPackageItems > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; }
+.mailPackageItems > div > div { display: grid; gap: 3px; }
+.mailPackageItems label { display: grid; gap: 4px; max-width: 120px; color: var(--muted); font-size: 10px; }
+.mailPackageItems label input { width: 100%; }
+.mailPackageSummary .mailPackageItems > div { display: grid; gap: 4px; }
+.mailRecipientsSection { display: grid; gap: 12px; margin: 20px 0; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.025); }
+.mailRecipientsHeader { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+.mailRecipientsHeader div { display: grid; gap: 5px; }
+.mailRecipientsHeader small, .mailRecipientsSection > small { color: var(--muted); }
+.mailRecipientsHeader input { width: min(260px, 100%); padding: 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,.28); }
+.mailRecipientsList { display: grid; max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.mailRecipientRow { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(230px, 1.3fr) 105px; gap: 14px; align-items: center; padding: 10px 13px; border-bottom: 1px solid var(--line); }
+.mailRecipientRow:last-child { border-bottom: 0; }
+.mailRecipientRow > div { display: grid; gap: 3px; min-width: 0; }
+.mailRecipientRow small { color: var(--muted); }
+.mailRecipientRow select { min-width: 0; padding: 9px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--panel-solid); }
+.mailRecipientRow > span { color: var(--muted); font-size: 10px; }
+@media (max-width: 660px) { .mailRecipientsHeader { align-items: stretch; flex-direction: column; } .mailRecipientsHeader input { width: 100%; } .mailRecipientRow { grid-template-columns: 1fr; gap: 8px; } }
 .mailField { position: relative; display: grid; gap: 7px; margin: 18px 0; color: var(--muted); font-size: 11px; font-weight: 700; }
 .mailField input, .mailField select, .mailField textarea, .mailFormGrid input { width: 100%; padding: 11px 12px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; outline: 0; background: rgba(0,0,0,.28); resize: vertical; }
 .mailField input:focus, .mailField select:focus, .mailField textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(255,215,0,.08); }
@@ -973,3 +1010,25 @@ button.overviewStat:hover { transform: translateY(-2px); border-color: rgba(255,
 @media (max-width: 1000px) { .overviewStats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .overviewVipGrid { grid-template-columns: 1fr; } .overviewSideStack { grid-template-columns: repeat(2, 1fr); grid-template-rows: auto; } }
 @media (max-width: 760px) { .overviewToolbar { align-items: flex-start; flex-direction: column; } .overviewToolbarActions { width: 100%; justify-content: space-between; } .vipUpcoming article { grid-template-columns: 38px 1fr auto; gap: 10px; padding: 13px 0; } .upcomingLevel { display: none; } .upcomingDate { grid-column: 2; } .renewVipButton { grid-column: 3; grid-row: 1 / 3; } .vipJobStatus { grid-template-columns: 36px 1fr; } .jobSchedule { grid-column: 1 / -1; padding: 12px 0 0; border-top: 1px solid var(--line); border-left: 0; text-align: left; } .accountCard summary { flex-wrap: wrap; } }
 @media (max-width: 540px) { .overviewStats, .overviewSideStack { grid-template-columns: 1fr; } .overviewStat { min-height: 120px; } .vipTotal { align-items: flex-start; flex-direction: column; gap: 8px; } .vipLevelRow { grid-template-columns: 32px 1fr; } .vipLevelRow > strong { display: none; } .vipUpcoming { padding-inline: 13px; } .vipFilters label { width: 100%; } }
+.deliveryHistory { display: grid; gap: 18px; }
+.deliveryToolbar { display: grid; grid-template-columns: minmax(260px,1fr) 170px 170px auto auto; gap: 10px; align-items: center; }
+.deliveryToolbar select { height: 40px; padding: 0 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--panel-solid); }
+.deliveryStats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+.deliveryStats article { display: grid; gap: 7px; padding: 15px 17px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.025); }
+.deliveryStats small { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .1em; }
+.deliveryStats strong { font-family: var(--font-display); font-size: 24px; }
+.deliveryStats .received strong { color: var(--green-ink); } .deliveryStats .failed strong { color: var(--red-ink); }
+.deliveryTableWrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+.deliveryTable { width: 100%; min-width: 1050px; border-collapse: collapse; }
+.deliveryTable th { padding: 11px 14px; color: var(--muted); background: rgba(255,255,255,.035); font-size: 8px; letter-spacing: .1em; text-align: left; }
+.deliveryTable td { padding: 14px; border-top: 1px solid var(--line-soft); vertical-align: top; }
+.deliveryTable td > strong, .deliveryTable td > small { display: block; }
+.deliveryTable td > strong { font-size: 10px; } .deliveryTable td > small { margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.deliveryStatus, .deliveryChannel { display: inline-flex; padding: 5px 8px; border-radius: 99px; font-size: 8px; font-weight: 900; }
+.deliveryStatus.claimed { color: var(--green-ink); background: rgba(76,175,80,.13); }
+.deliveryStatus.applied { color: var(--blue-ink); background: rgba(74,158,255,.13); }
+.deliveryStatus.pending, .deliveryStatus.processing { color: var(--amber-ink); background: rgba(255,193,7,.13); }
+.deliveryStatus.failed { color: var(--red-ink); background: rgba(244,67,54,.13); }
+.deliveryChannel.mail { color: var(--gold); background: rgba(255,215,0,.1); } .deliveryChannel.cashshop { color: var(--blue-ink); background: rgba(74,158,255,.1); }
+.deliveryError { max-width: 150px; color: var(--red-ink) !important; }.claimedText { color: var(--green-ink); }
+@media (max-width: 920px) { .deliveryToolbar { grid-template-columns: 1fr 1fr; } .deliveryToolbar .searchInputWrap { grid-column: 1 / -1; } .deliveryStats { grid-template-columns: repeat(2,1fr); } }
