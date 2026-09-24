@@ -14,7 +14,7 @@ type LayoutClass = { classIndex: number; prefix: string; label: string | null };
 type LayoutCell = { column: number; row: number; kind: string; tblidx: number | null };
 type LineDefinition = { kind: string; beginSkill: number; endSkill: number; beginAttach: string; endAttach: string };
 type LayoutLine = LineDefinition & { column: number; row: number; name: string; active: boolean };
-type LayoutSkill = { tblidx: number; name: string; internalName: string; iconName: string; grade: number };
+type LayoutSkill = { tblidx: number; name: string; internalName: string; iconName: string; grade: number; nextSkillId: number };
 type SkillLayout = { classIndex: number; prefix: string; packedPath: string; columns: number; rows: number; cells: LayoutCell[]; lines: LayoutLine[]; skills: LayoutSkill[] };
 type Change = { kind: "cell" | "line"; column: number; row: number; beforeName: string | null; afterName: string | null };
 type Preview = { changes: Change[]; lineChanges: Change[]; blockingIssues: string[]; packDirectory: string };
@@ -76,6 +76,10 @@ export function SkillTreePanel() {
 
   const loading = classIndex !== null && !layout && !error;
   const skillsPorTblidx = useMemo(() => new Map((layout?.skills ?? []).map((skill) => [skill.tblidx, skill])), [layout]);
+  const skillsForaDaGrade = useMemo(() => {
+    const colocadas = new Set([...placement.values()].filter((tblidx): tblidx is number => tblidx !== null));
+    return (layout?.skills ?? []).filter((skill) => !colocadas.has(skill.tblidx)).sort((a, b) => a.name.localeCompare(b.name, "pt-BR") || a.tblidx - b.tblidx);
+  }, [layout, placement]);
   const cellsPorChave = useMemo(() => new Map((layout?.cells ?? []).map((cell) => [cellKey(cell.column, cell.row), cell])), [layout]);
   const linhasVisiveis = useMemo(() => [...new Set((layout?.cells ?? []).map((cell) => cell.row))].sort((a, b) => a - b), [layout]);
 
@@ -132,11 +136,24 @@ export function SkillTreePanel() {
     if (from === to) return;
     setPlacement((atual) => {
       const proximo = new Map(atual);
+      if (from.startsWith("available:")) {
+        const tblidx = Number(from.slice("available:".length));
+        // Evita duplicidade se a mesma skill tiver sido recolocada durante o arraste.
+        for (const [key, value] of proximo) if (value === tblidx) proximo.set(key, null);
+        proximo.set(to, tblidx);
+        return proximo;
+      }
       const origem = proximo.get(from) ?? null;
       proximo.set(from, proximo.get(to) ?? null);
       proximo.set(to, origem);
       return proximo;
     });
+  }
+
+  function removeFromGrid(from: string) {
+    if (from.startsWith("available:")) return;
+    setPlacement((atual) => new Map(atual).set(from, null));
+    setDragging(null);
   }
 
   /** Segundo clique no modo de ligação: cria a seta no primeiro slot livre. */
@@ -263,6 +280,24 @@ export function SkillTreePanel() {
         })}
       </div>
 
+      <aside className="skillTreeSidebar">
+      <div className={`skillTreeAvailable${dragging && !dragging.startsWith("available:") ? " dropReady" : ""}`}
+        onDragOver={(event) => event.preventDefault()} onDrop={() => dragging && removeFromGrid(dragging)}>
+        <header><div><strong>Skills disponíveis</strong><small>Arraste para uma célula vazia</small></div><span>{skillsForaDaGrade.length}</span></header>
+        <div className="skillTreeAvailableList">
+          {skillsForaDaGrade.map((skill) => <article key={skill.tblidx} draggable={!linkMode}
+            onDragStart={() => setDragging(`available:${skill.tblidx}`)} onDragEnd={() => { setDragging(null); setHovered(null); }}
+            title={`${skill.name} · #${skill.tblidx} · início da cadeia de níveis`}>
+            {skill.iconName
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={`/api/skills/icons/${encodeURIComponent(skill.iconName)}`} alt="" draggable={false} />
+              : <span className="skillTreeFallback">{skill.tblidx}</span>}
+            <div><strong>{skill.name}</strong><small>#{skill.tblidx} · grau {skill.grade}{skill.nextSkillId !== 0xffffffff ? ` · próximo #${skill.nextSkillId}` : ""}</small></div>
+          </article>)}
+          {!skillsForaDaGrade.length && <small className="muted">Todas as skills desta classe já estão na grade.</small>}
+        </div>
+        <small>Solte uma skill da grade aqui para removê-la do layout.</small>
+      </div>
       <div className="skillTreeLegend">
         <strong>Setas ({setasAtivas.length})</strong>
         {!setasAtivas.length && <small className="muted">Nenhuma seta. Use &quot;Ligar skills&quot; para criar.</small>}
@@ -283,6 +318,7 @@ export function SkillTreePanel() {
         </div>)}
         <small className="muted">O cliente desenha a seta entre as duas skills, então mover um ícone já a reposiciona. O desenho aqui é uma aproximação do caminho.</small>
       </div>
+      </aside>
     </div>}
 
     {preview && <div className="modalBackdrop" role="presentation" onMouseDown={(event) => { if (!publishing && event.target === event.currentTarget) setPreview(null); }}>

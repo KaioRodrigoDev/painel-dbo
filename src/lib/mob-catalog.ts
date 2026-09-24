@@ -4,17 +4,28 @@ import { readFile, stat } from "node:fs/promises";
 import { resolveServerTable } from "@/lib/game-paths";
 import type { MobCatalogEntry } from "@/lib/types";
 
-const HEADER_SIZE = 1;
-const RECORD_SIZE = 584;
+export const MOB_RDF_HEADER_SIZE = 1;
+export const MOB_RDF_RECORD_SIZE = 584;
+const HEADER_SIZE = MOB_RDF_HEADER_SIZE;
+const RECORD_SIZE = MOB_RDF_RECORD_SIZE;
 const MOB_TEXT_SECTION = 5;
 
 type CatalogCache = {
   path: string; modifiedAt: number; size: number;
   textPath: string; textModifiedAt: number; textSize: number;
   mobs: MobCatalogEntry[];
+  /** O arquivo inteiro, para quem precisa de campos que a entrada nao carrega (as skills). */
+  buffer: Buffer;
+  /** Offset do registro de cada mob no buffer, pelo tblidx. */
+  offsetByTblidx: Map<number, number>;
 };
 
 let catalogCache: CatalogCache | null = null;
+
+/** Descarta o cache depois de uma publicacao; ver o mesmo motivo em drop-catalog.ts. */
+export function invalidateMobCatalogCache() {
+  catalogCache = null;
+}
 
 function readFixedString(buffer: Buffer, offset: number, length: number) {
   const end = buffer.indexOf(0, offset);
@@ -96,7 +107,12 @@ export async function loadMobCatalog() {
   if (buffer.length <= HEADER_SIZE || (buffer.length - HEADER_SIZE) % RECORD_SIZE !== 0) throw new Error(`Formato de Table_MOB_Data.rdf incompatível: ${buffer.length} bytes.`);
   const names = parseMobText(textBuffer);
   const mobs: MobCatalogEntry[] = [];
-  for (let offset = HEADER_SIZE; offset < buffer.length; offset += RECORD_SIZE) mobs.push(parseMob(buffer, offset, names));
-  catalogCache = { path: catalogPath, modifiedAt: fileStat.mtimeMs, size: fileStat.size, textPath, textModifiedAt: textStat.mtimeMs, textSize: textStat.size, mobs };
+  const offsetByTblidx = new Map<number, number>();
+  for (let offset = HEADER_SIZE; offset < buffer.length; offset += RECORD_SIZE) {
+    const mob = parseMob(buffer, offset, names);
+    mobs.push(mob);
+    offsetByTblidx.set(mob.tblidx, offset);
+  }
+  catalogCache = { path: catalogPath, modifiedAt: fileStat.mtimeMs, size: fileStat.size, textPath, textModifiedAt: textStat.mtimeMs, textSize: textStat.size, mobs, buffer, offsetByTblidx };
   return catalogCache;
 }

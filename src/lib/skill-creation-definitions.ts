@@ -92,7 +92,7 @@ export const SKILL_CREATION_FIELDS: Record<SkillCreationFieldId, SkillCreationFi
   valid: field("valid", "Skill ativa", "bValidity_Able", "checkbox", "identity", { required: true }),
 
   classFlag: field("classFlag", "Classes permitidas", "dwPC_Class_Bit_Flag", "bitflag", "classification", { ...dword, help: "Selecione as classes pelo nome. O número técnico é calculado automaticamente." }),
-  classType: field("classType", "Tipo de classe", "byClass_Type", "number", "classification", { ...byte, help: "Campo interno herdado da base. Preserve-o salvo quando houver uma regra conhecida para a nova classe." }),
+  classType: field("classType", "Tipo de classe", "byClass_Type", "number", "classification", { ...byte, help: "Não há enum para este campo em lugar nenhum do servidor; a lista mostra os valores que a tabela realmente usa." }),
   skillClass: field("skillClass", "Categoria", "bySkill_Class", "select", "classification", { ...byte, locked: true, options: SKILL_CLASS_OPTIONS }),
   skillType: field("skillType", "Tipo de dano/efeito", "bySkill_Type", "select", "classification", { ...byte, options: SKILL_TYPE_OPTIONS }),
   activeType: field("activeType", "Comportamento principal", "bySkill_Active_Type", "select", "classification", { ...byte, options: ACTIVE_TYPE_OPTIONS }),
@@ -109,7 +109,7 @@ export const SKILL_CREATION_FIELDS: Record<SkillCreationFieldId, SkillCreationFi
   applyAreaSize1: field("applyAreaSize1", "Área 1", "byApply_Area_Size_1", "number", "targeting", byte),
   applyAreaSize2: field("applyAreaSize2", "Área 2", "byApply_Area_Size_2", "number", "targeting", byte),
 
-  effectIds: field("effectIds", "Efeitos do sistema", "skill_Effect[2]", "number-list", "effects", { help: "Até 2 TBLIDX de Table_System_Effect_Data. Use 4294967295 para deixar o espaço vazio." }),
+  effectIds: field("effectIds", "Efeitos do sistema", "skill_Effect[2]", "number-list", "effects", { help: "Até 2 efeitos de Table_System_Effect_Data, escolhidos pelo nome." }),
   effectTypes: field("effectTypes", "Como aplicar cada efeito", "bySkill_Effect_Type[2]", "number-list", "effects", { help: "Define se o valor ao lado é absoluto, percentual ou fração de um atributo." }),
   effectValues: field("effectValues", "Valores dos efeitos", "aSkill_Effect_Value[2]", "number-list", "effects", { help: "Um valor por efeito. O significado depende de 'Como aplicar cada efeito'." }),
   additionalAggro: field("additionalAggro", "Aggro adicional", "dwAdditional_Aggro_Point", "number", "effects", dword),
@@ -121,8 +121,8 @@ export const SKILL_CREATION_FIELDS: Record<SkillCreationFieldId, SkillCreationFi
   requiredZenny: field("requiredZenny", "Custo em Zeni", "dwRequire_Zenny", "number", "requirements", { ...dword, help: "Valor cobrado ao aprender a skill. Zero significa gratuito." }),
   requiredSp: field("requiredSp", "Custo em SP", "wRequireSP", "number", "requirements", { ...word, help: "Pontos de skill consumidos para aprender esta grade." }),
   selfTrain: field("selfTrain", "Aprendível sem treinador", "bSelfTrain", "checkbox", "requirements", { help: "Quando ativo, o jogador pode aprender pela própria árvore de skills." }),
-  prerequisiteSkillIds: field("prerequisiteSkillIds", "Skills pré-requisito", "uiRequire_Skill_Tblidx_[Min/Max]_[1/2]", "number-list", "requirements", { help: "4 TBLIDX na ordem mínimo 1, máximo 1, mínimo 2, máximo 2. Cada par define uma faixa de grades exigida; use 4294967295 para deixar vazio." }),
-  rootSkillId: field("rootSkillId", "Skill raiz", "Root_Skill", "reference", "requirements", { ...dword, help: "Primeira habilidade da sequência. A interface tenta resolver o TBLIDX para um nome." }),
+  prerequisiteSkillIds: field("prerequisiteSkillIds", "Skills pré-requisito", "uiRequire_Skill_Tblidx_[Min/Max]_[1/2]", "number-list", "requirements", { help: "Dois pares; cada um delimita a faixa de grades exigida." }),
+  rootSkillId: field("rootSkillId", "Skill raiz", "Root_Skill", "reference", "requirements", { ...dword, help: "Nenhuma das 2.838 skills desta base preenche este campo — todas gravam vazio. Mexer aqui sai do padrão do jogo." }),
   requiredEquipSlotType: field("requiredEquipSlotType", "Equipamento exigido", "byRequire_Epuip_Slot_Type", "select", "requirements", { ...byte, options: [...EQUIP_SLOT_OPTIONS, { value: 255, label: "Nenhum slot específico" }] }),
   requiredItemType: field("requiredItemType", "Tipo de item exigido", "byRequire_Item_Type", "select", "requirements", { ...byte, options: REQUIRED_ITEM_OPTIONS }),
   requiredLp: field("requiredLp", "LP consumido ao usar", "dwRequire_LP", "number", "requirements", { ...dword, help: "Custo de vida por ativação. Normalmente zero." }),
@@ -137,7 +137,7 @@ export const SKILL_CREATION_FIELDS: Record<SkillCreationFieldId, SkillCreationFi
   useRangeMin: field("useRangeMin", "Alcance mínimo", "fUse_Range_Min", "number", "timing", { min: 0, step: 0.01 }),
   useRangeMax: field("useRangeMax", "Alcance máximo", "fUse_Range_Max", "number", "timing", { min: 0, step: 0.01 }),
 
-  nextSkillId: field("nextSkillId", "Próxima grade", "dwNextSkillTblidx", "reference", "progression", { ...dword, help: "TBLIDX da grade seguinte. Use 0 ou 4294967295 quando não houver próxima grade, conforme a família clonada." }),
+  nextSkillId: field("nextSkillId", "Próxima grade", "dwNextSkillTblidx", "reference", "progression", { ...dword, help: "A grade seguinte da família. Metade das skills da base deixa vazio, que é o fim da sequência." }),
   defaultDisplayOff: field("defaultDisplayOff", "Oculta por padrão", "bDefaultDisplayOff", "checkbox", "progression"),
 
   animationTimeMs: field("animationTimeMs", "Tempo da animação (ms)", "dwAnimation_Time", "number", "animation", dword),
@@ -149,7 +149,7 @@ export const SKILL_CREATION_FIELDS: Record<SkillCreationFieldId, SkillCreationFi
   dashAble: field("dashAble", "Permite dash", "bDash_Able", "checkbox", "animation"),
 
   classChange: field("classChange", "Mudar classe ao aprender", "byPC_Class_Change", "select", "advanced", { ...byte, options: [{ value: 255, label: "Não mudar a classe" }, ...CHARACTER_CLASS_OPTIONS], help: "Atenção: uma classe diferente de 255 pode alterar de verdade a classe do personagem." }),
-  useType: field("useType", "Tipo técnico de uso", "byUse_Type", "number", "advanced", { ...byte, help: "Não há enumeração confiável nesta base. Preserve o valor da skill clonada." }),
+  useType: field("useType", "Tipo técnico de uso", "byUse_Type", "number", "advanced", { ...byte, help: "O servidor não lê este campo em lugar nenhum; a tabela inteira usa 0, com uma única exceção." }),
   restrictionRuleFlag: field("restrictionRuleFlag", "Regras técnicas de restrição", "dwUse_Restriction_Rule_Bit_Flag", "bitflag", "advanced", { ...dword, help: "Máscara avançada sem enumeração completa nesta base. Mantenha o valor herdado até mapearmos cada bit com segurança." }),
 };
 

@@ -35,7 +35,7 @@ const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?
 
 export const packedPathForClass = (prefix: string, suffix = "skill") => `.\\gui\\skill\\${prefix}_${suffix}.scr`;
 
-export type LayoutSkill = { tblidx: number; name: string; internalName: string; iconName: string; grade: number };
+export type LayoutSkill = { tblidx: number; name: string; internalName: string; iconName: string; grade: number; nextSkillId: number };
 export type LayoutCellView = { column: number; row: number; kind: string; tblidx: number | null };
 export type SkillLayoutView = {
   classIndex: number;
@@ -74,6 +74,14 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
   const catalog = await loadSkillCatalog();
   const porTblidx = new Map(catalog.skills.map((skill) => [skill.tblidx, skill]));
   const usados = new Set(layout.cells.map((cell) => cell.tblidx).filter((tblidx): tblidx is number => tblidx !== null));
+  // O .scr guarda somente as skills que ja foram colocadas na grade. Para permitir
+  // adicionar uma skill recem-transferida de classe, tambem devolvemos as skills raiz
+  // (grau 1) que o RDF declara para esta classe. Os graus seguintes pertencem a mesma
+  // cadeia e sao alcancados por nextSkillId; nao ocupam celulas separadas no cliente.
+  const disponiveis = classIndex <= 20
+    ? catalog.skills.filter((skill) => skill.valid && skill.grade <= 1 && (skill.classFlag & (1 << classIndex)) !== 0)
+    : [];
+  const tblidxs = new Set([...usados, ...disponiveis.map((skill) => skill.tblidx)]);
 
   return {
     classIndex,
@@ -83,7 +91,7 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
     rows: layout.rows,
     cells: layout.cells.map((cell) => ({ column: cell.column, row: cell.row, kind: cell.kind, tblidx: cell.tblidx })),
     lines: layout.lines,
-    skills: [...usados].map((tblidx) => {
+    skills: [...tblidxs].map((tblidx) => {
       const skill = porTblidx.get(tblidx);
       return {
         tblidx,
@@ -91,6 +99,7 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
         internalName: skill?.internalName ?? "",
         iconName: skill?.iconName ?? "",
         grade: skill?.grade ?? 0,
+        nextSkillId: skill?.nextSkillId ?? 0xffffffff,
       };
     }),
   };

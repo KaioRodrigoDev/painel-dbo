@@ -44,7 +44,21 @@ type MailPackageAuditEntry = {
   target: string;
 };
 
-type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry;
+type MobSkillAuditEntry = {
+  administrator: string;
+  action: "mobskills.draft_edit" | "mobskills.draft_discard" | "mobskills.rdf_publish";
+  target: string;
+  details?: Record<string, unknown>;
+};
+
+type DropAuditEntry = {
+  administrator: string;
+  action: "drops.draft_edit" | "drops.draft_discard" | "drops.rdf_publish";
+  target: string;
+  details?: Record<string, unknown>;
+};
+
+type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry | DropAuditEntry | MobSkillAuditEntry;
 
 export async function writeAuditLog(entry: AuditEntry) {
   const auditDirectory = path.join(process.cwd(), "data");

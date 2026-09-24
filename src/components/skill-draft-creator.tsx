@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DerivedOptionField, isEmptyReference, PrerequisiteEditor, SkillReferencePicker, SystemEffectPicker, type ResolvedSkill } from "@/components/skill-reference-fields";
 
 import {
   getFieldsForSkillClass,
@@ -14,7 +15,7 @@ import {
   type SkillCreationField,
   type SkillCreationGroup,
 } from "@/lib/skill-creation-definitions";
-import type { SkillCatalogEntry, SkillCatalogResponse, SkillDraft, SkillDraftsResponse, SkillDraftValue, SkillPublishPreview } from "@/lib/types";
+import type { SkillCatalogEntry, SkillCatalogResponse, SkillDraft, SkillDraftsResponse, SkillDraftValue, SkillFieldOption, SkillFieldOptions, SkillPublishPreview, SystemEffectEntry } from "@/lib/types";
 
 const GROUP_LABELS: Record<SkillCreationGroup, string> = {
   identity: "Identidade", classification: "Categoria e árvore", targeting: "Alvos e área",
@@ -105,6 +106,12 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
   const [packDownloadDraftId, setPackDownloadDraftId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // Campos sem enum no servidor viram lista a partir dos valores que a tabela usa, e os
+  // campos de referencia precisam do nome do que ja esta gravado -- que pode apontar para
+  // fora da familia carregada na tela.
+  const [fieldOptions, setFieldOptions] = useState<SkillFieldOptions>({});
+  const [resolvedSkills, setResolvedSkills] = useState<Map<number, ResolvedSkill>>(new Map());
+  const [resolvedEffects, setResolvedEffects] = useState<Map<number, SystemEffectEntry>>(new Map());
 
   const profile = getSkillCreationProfile(skillClass);
   const fields = useMemo(() => getFieldsForSkillClass(skillClass), [skillClass]);
@@ -148,6 +155,53 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
     const timer = window.setTimeout(() => void loadBases(controller.signal), 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [loadBases]);
+
+  const loadFieldOptions = useCallback(async (signal: AbortSignal) => {
+    const response = await fetch("/api/skills/field-options", { signal, cache: "no-store" });
+    if (!response.ok) return;
+    setFieldOptions(((await response.json()) as { options: SkillFieldOptions }).options);
+  }, []);
+  useEffect(() => { const controller = new AbortController(); const timer = window.setTimeout(() => void loadFieldOptions(controller.signal).catch(() => undefined), 0); return () => { window.clearTimeout(timer); controller.abort(); }; }, [loadFieldOptions]);
+
+  // Resolve nome e icone de tudo que os campos de referencia apontam hoje.
+  const referencedSkillIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const raw of [values.rootSkillId, values.nextSkillId]) if (typeof raw === "number" && !isEmptyReference(raw)) ids.add(raw);
+    if (Array.isArray(values.prerequisiteSkillIds)) for (const id of values.prerequisiteSkillIds) if (!isEmptyReference(id)) ids.add(id);
+    return [...ids];
+  }, [values.nextSkillId, values.prerequisiteSkillIds, values.rootSkillId]);
+
+  const referencedEffectIds = useMemo(() => (Array.isArray(values.effectIds) ? values.effectIds.filter((id) => !isEmptyReference(id)) : []), [values.effectIds]);
+
+  useEffect(() => {
+    const pending = referencedSkillIds.filter((id) => !resolvedSkills.has(id));
+    if (!pending.length) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/skills/lookup?ids=${pending.join(",")}`, { signal: controller.signal, cache: "no-store" });
+        if (!response.ok) return;
+        const body = (await response.json()) as { skills: ResolvedSkill[] };
+        setResolvedSkills((current) => { const next = new Map(current); for (const skill of body.skills) next.set(skill.tblidx, skill); return next; });
+      } catch { /* abortado */ }
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [referencedSkillIds, resolvedSkills]);
+
+  useEffect(() => {
+    const pending = referencedEffectIds.filter((id) => !resolvedEffects.has(id));
+    if (!pending.length) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/system-effects?ids=${pending.join(",")}`, { signal: controller.signal, cache: "no-store" });
+        if (!response.ok) return;
+        const body = (await response.json()) as { effects: SystemEffectEntry[] };
+        setResolvedEffects((current) => { const next = new Map(current); for (const effect of body.effects) next.set(effect.tblidx, effect); return next; });
+      } catch { /* abortado */ }
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [referencedEffectIds, resolvedEffects]);
 
   function changeCategory(rawValue: string) {
     setSkillClass(Number(rawValue)); setBaseSkill(null); setBaseValues({}); setValues({});
@@ -278,12 +332,12 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
 
     {!baseSkill ? <div className="draftEmptyState">Selecione uma skill-base para abrir os campos da categoria.</div> : <form onSubmit={saveDraft}>
       <div className="draftWorkspace">
-        <div className="draftFields">{groupedFields.map((section, index) => <details className="draftFieldGroup" open={index < 7 || section.group === "advanced"} key={section.group}><summary><div><strong>{section.label}</strong><small>{GROUP_HELP[section.group]}</small></div><span>{section.fields.length} campos</span></summary><div className="draftFieldGrid">{section.fields.map((metadata) => <SkillDraftField key={metadata.id} metadata={metadata} value={values[metadata.id]} allValues={values} changed={!sameValue(values[metadata.id], baseValues[metadata.id])} relatedSkills={bases} requiredCharacterClass={editMode ? -1 : characterClass} lockTblidx={editMode} onChange={(value) => changeField(metadata, value)} onChangeMany={changeFields} />)}</div></details>)}</div>
+        <div className="draftFields">{groupedFields.map((section, index) => <details className="draftFieldGroup" open={index < 7 || section.group === "advanced"} key={section.group}><summary><div><strong>{section.label}</strong><small>{GROUP_HELP[section.group]}</small></div><span>{section.fields.length} campos</span></summary><div className="draftFieldGrid">{section.fields.map((metadata) => <SkillDraftField key={metadata.id} metadata={metadata} value={values[metadata.id]} allValues={values} changed={!sameValue(values[metadata.id], baseValues[metadata.id])} relatedSkills={bases} requiredCharacterClass={editMode ? -1 : characterClass} lockTblidx={editMode} onChange={(value) => changeField(metadata, value)} onChangeMany={changeFields} resolvedSkills={resolvedSkills} resolvedEffects={resolvedEffects} derivedOptions={fieldOptions[metadata.id]} onResolveSkill={(skill) => setResolvedSkills((current) => new Map(current).set(skill.tblidx, skill))} onResolveEffect={(effect) => setResolvedEffects((current) => new Map(current).set(effect.tblidx, effect))} />)}</div></details>)}</div>
         <aside className="draftDiffPanel">
           <div className="skillDraftPreviewIdentity"><SkillBaseIcon skill={baseSkill} compact /><span>Ícone herdado da base</span></div>
           <div><div className="eyebrow">PRÉ-VISUALIZAÇÃO</div><h3>{String(values.name || "Nova habilidade")}</h3><p>{editMode ? `Editando #${displayValue(values.tblidx)}` : `Nova #${displayValue(values.tblidx)} baseada em #${baseSkill.tblidx}`}</p></div>
           <strong>{changedFields.length} alterações</strong>
-          <div className="draftDiffList">{changedFields.map((metadata) => <div key={metadata.id}><span>{metadata.label}</span><small>{displayValue(baseValues[metadata.id])} →</small><strong>{displayValue(values[metadata.id])}</strong></div>)}</div>
+          <div className="draftDiffList">{changedFields.map((metadata) => <div key={metadata.id}><span>{metadata.label}</span><small>{describeFieldValue(metadata.id, baseValues[metadata.id], resolvedSkills, resolvedEffects)} →</small><strong>{describeFieldValue(metadata.id, values[metadata.id], resolvedSkills, resolvedEffects)}</strong></div>)}</div>
           {!changedFields.length && <p className="muted">Nenhum campo foi alterado.</p>}
           <button className="primaryButton" disabled={saving || Number(values.tblidx) < 1 || !String(values.name ?? "").trim() || (editMode && changedFields.length === 0)}>{saving ? "Salvando..." : editMode ? "Salvar edição como rascunho" : "Salvar rascunho JSON"}</button>
         </aside>
@@ -291,25 +345,54 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
     </form>}
 
     <section className="savedDrafts"><div className="serverSectionHeader"><div><strong>Rascunhos salvos</strong><span>Valide as diferenças antes de publicar no RDF do servidor</span></div><span>{drafts.length}</span></div>{drafts.length === 0 ? <p className="muted">Nenhum rascunho criado.</p> : <div className="savedDraftGrid">{drafts.map((draft) => <article key={draft.id} className={draft.status === "published" ? "published" : ""}><div><strong>{draft.name}</strong><span>{draft.operation === "edit" ? "Edição" : "Criação"} · #{draft.newTblidx} · {draft.profile} · {CHARACTER_CLASSES[draft.characterClass] ?? `Classe ${draft.characterClass}`}</span></div><small>Base #{draft.baseTblidx} · {draft.changedFields.length} alterações · {new Date(draft.updatedAt).toLocaleString("pt-BR")}</small>{draft.status === "published" ? <div className="draftPublishedStatus"><strong>Publicado no RDF</strong><span>{draft.publishedAt ? new Date(draft.publishedAt).toLocaleString("pt-BR") : ""}</span></div> : <button className="publishDraftButton" type="button" disabled={validatingDraftId === draft.id} onClick={() => void validatePublication(draft)}>{validatingDraftId === draft.id ? "Validando..." : "Validar e publicar"}</button>}</article>)}</div>}</section>
-    {publishPreview && <div className="modalBackdrop" role="presentation" onMouseDown={(event) => { if (!publishing && event.target === event.currentTarget) setPublishPreview(null); }}><section className="editorModal skillPublishModal" role="dialog" aria-modal="true" aria-labelledby="skill-publish-title"><div className="modalHeader"><div><div className="eyebrow">CONFIRMAÇÃO OBRIGATÓRIA</div><h2 id="skill-publish-title">Publicar {publishPreview.skillName}</h2><p>Skill #{publishPreview.tblidx}</p></div><button className="closeButton" disabled={publishing} onClick={() => setPublishPreview(null)} aria-label="Fechar">×</button></div><div className="publishDestination"><small>Arquivo que será alterado</small><code>{publishPreview.rdfPath}</code></div><div className="publishChangeList"><div className="publishChangeHeader"><strong>Mudanças confirmadas</strong><span>{publishPreview.changes.length}</span></div>{publishPreview.changes.map((change) => <div key={change.id}><span><strong>{change.label}</strong><small>{change.sourceField}</small></span><code>{displayValue(change.before)}</code><b>→</b><code>{displayValue(change.after)}</code></div>)}</div>{publishPreview.blockingIssues.length > 0 && <div className="errorBanner"><strong>Publicação bloqueada</strong><span>{publishPreview.blockingIssues.join(" ")}</span></div>}<div className="publishWarnings">{publishPreview.warnings.map((warning) => <span key={warning}>⚠ {warning}</span>)}</div><div className="publishClientOptions"><strong>Cópia do cliente</strong><label><input type="checkbox" checked={replaceClientPack} onChange={(event) => setReplaceClientPack(event.target.checked)} /><span>Substituir automaticamente o pack do cliente</span></label><label><input type="checkbox" checked={prepareDownload} onChange={(event) => setPrepareDownload(event.target.checked)} /><span>Gerar o pack corrigido para download</span></label>{(replaceClientPack || prepareDownload) && <label className="publishPackPath"><span>Pasta pack do cliente</span><input type="text" value={clientPackDirectory} onChange={(event) => setClientPackDirectory(event.target.value)} spellCheck={false} placeholder="C:\\...\\ClientRuntime_RealBase\\pack" /></label>}{!replaceClientPack && !prepareDownload && <small className="muted">Sem nenhuma das duas, só o RDF do servidor muda e o cliente continua com o valor antigo.</small>}</div>{publishPreview.confirmationToken && <label className="publishAcknowledgement"><input type="checkbox" checked={publishAcknowledged} onChange={(event) => setPublishAcknowledged(event.target.checked)} /><span>Revisei os valores acima e confirmo a gravação no RDF do servidor.</span></label>}<div className="modalActions"><button className="catalogClearButton" type="button" disabled={publishing} onClick={() => setPublishPreview(null)}>Cancelar</button><button className="dangerPublishButton" type="button" disabled={publishing || !publishAcknowledged || !publishPreview.confirmationToken} onClick={() => void confirmPublication()}>{publishing ? "Publicando..." : "Confirmar publicação no RDF"}</button></div></section></div>}
+    {publishPreview && <div className="modalBackdrop" role="presentation" onMouseDown={(event) => { if (!publishing && event.target === event.currentTarget) setPublishPreview(null); }}><section className="editorModal skillPublishModal" role="dialog" aria-modal="true" aria-labelledby="skill-publish-title"><div className="modalHeader"><div><div className="eyebrow">CONFIRMAÇÃO OBRIGATÓRIA</div><h2 id="skill-publish-title">Publicar {publishPreview.skillName}</h2><p>Skill #{publishPreview.tblidx}</p></div><button className="closeButton" disabled={publishing} onClick={() => setPublishPreview(null)} aria-label="Fechar">×</button></div><div className="publishDestination"><small>Arquivo que será alterado</small><code>{publishPreview.rdfPath}</code></div><div className="publishChangeList"><div className="publishChangeHeader"><strong>Mudanças confirmadas</strong><span>{publishPreview.changes.length}</span></div>{publishPreview.changes.map((change) => <div key={change.id}><span><strong>{change.label}</strong><small>{change.sourceField}</small></span><code>{describeFieldValue(change.id, change.before, resolvedSkills, resolvedEffects)}</code><b>→</b><code>{describeFieldValue(change.id, change.after, resolvedSkills, resolvedEffects)}</code></div>)}</div>{publishPreview.blockingIssues.length > 0 && <div className="errorBanner"><strong>Publicação bloqueada</strong><span>{publishPreview.blockingIssues.join(" ")}</span></div>}<div className="publishWarnings">{publishPreview.warnings.map((warning) => <span key={warning}>⚠ {warning}</span>)}</div><div className="publishClientOptions"><strong>Cópia do cliente</strong><label><input type="checkbox" checked={replaceClientPack} onChange={(event) => setReplaceClientPack(event.target.checked)} /><span>Substituir automaticamente o pack do cliente</span></label><label><input type="checkbox" checked={prepareDownload} onChange={(event) => setPrepareDownload(event.target.checked)} /><span>Gerar o pack corrigido para download</span></label>{(replaceClientPack || prepareDownload) && <label className="publishPackPath"><span>Pasta pack do cliente</span><input type="text" value={clientPackDirectory} onChange={(event) => setClientPackDirectory(event.target.value)} spellCheck={false} placeholder="C:\\...\\ClientRuntime_RealBase\\pack" /></label>}{!replaceClientPack && !prepareDownload && <small className="muted">Sem nenhuma das duas, só o RDF do servidor muda e o cliente continua com o valor antigo.</small>}</div>{publishPreview.confirmationToken && <label className="publishAcknowledgement"><input type="checkbox" checked={publishAcknowledged} onChange={(event) => setPublishAcknowledged(event.target.checked)} /><span>Revisei os valores acima e confirmo a gravação no RDF do servidor.</span></label>}<div className="modalActions"><button className="catalogClearButton" type="button" disabled={publishing} onClick={() => setPublishPreview(null)}>Cancelar</button><button className="dangerPublishButton" type="button" disabled={publishing || !publishAcknowledged || !publishPreview.confirmationToken} onClick={() => void confirmPublication()}>{publishing ? "Publicando..." : "Confirmar publicação no RDF"}</button></div></section></div>}
   </div>;
 }
 
-function SkillDraftField({ metadata, value, allValues, changed, relatedSkills, requiredCharacterClass, lockTblidx, onChange, onChangeMany }: { metadata: SkillCreationField; value: SkillDraftValue | undefined; allValues: Record<string, SkillDraftValue>; changed: boolean; relatedSkills: SkillCatalogEntry[]; requiredCharacterClass: number; lockTblidx: boolean; onChange: (value: string | boolean) => void; onChangeMany: (values: Record<string, SkillDraftValue>) => void }) {
+const EMPTY_REF = 4294967295;
+
+/**
+ * Formata o valor de um campo para leitura humana.
+ *
+ * Os campos de referencia guardam TBLIDX, e mostrar "4294967295 -> 110211" no resumo de
+ * alteracoes obrigava o operador a traduzir de cabeca justamente na hora de conferir o que
+ * vai para o RDF. Aqui o numero vira nome sempre que o catalogo ja o resolveu.
+ */
+function describeFieldValue(fieldId: string, value: SkillDraftValue | undefined, skills: Map<number, ResolvedSkill>, effects: Map<number, SystemEffectEntry>): string {
+  const skillName = (id: number) => isEmptyReference(id) ? "nenhuma" : skills.get(id)?.name ? `${skills.get(id)!.name} (#${id})` : `#${id}`;
+  if (fieldId === "rootSkillId" || fieldId === "nextSkillId") return skillName(Number(value ?? EMPTY_REF));
+  if (fieldId === "prerequisiteSkillIds" && Array.isArray(value)) {
+    return [0, 1].map((pair) => {
+      const min = value[pair * 2] ?? EMPTY_REF;
+      const max = value[pair * 2 + 1] ?? EMPTY_REF;
+      if (isEmptyReference(min) && isEmptyReference(max)) return `par ${pair + 1}: sem exigência`;
+      return `par ${pair + 1}: ${skillName(min)} até ${skillName(max)}`;
+    }).join(" · ");
+  }
+  if (fieldId === "effectIds" && Array.isArray(value)) {
+    return value.map((id) => isEmptyReference(id) ? "vazio" : effects.get(id)?.name ?? `#${id}`).join(" · ");
+  }
+  return displayValue(value);
+}
+
+function SkillDraftField({ metadata, value, allValues, changed, relatedSkills, requiredCharacterClass, lockTblidx, onChange, onChangeMany, resolvedSkills, resolvedEffects, derivedOptions, onResolveSkill, onResolveEffect }: { metadata: SkillCreationField; value: SkillDraftValue | undefined; allValues: Record<string, SkillDraftValue>; changed: boolean; relatedSkills: SkillCatalogEntry[]; requiredCharacterClass: number; lockTblidx: boolean; onChange: (value: string | boolean) => void; onChangeMany: (values: Record<string, SkillDraftValue>) => void; resolvedSkills: Map<number, ResolvedSkill>; resolvedEffects: Map<number, SystemEffectEntry>; derivedOptions?: SkillFieldOption[]; onResolveSkill: (skill: ResolvedSkill) => void; onResolveEffect: (effect: SystemEffectEntry) => void }) {
   const className = changed ? "draftField changed" : "draftField";
   if (metadata.id === "rpEffectValues") return null;
   if (metadata.id === "rpEffects") return <RpBonusEditor metadata={metadata} types={Array.isArray(value) ? value : []} values={Array.isArray(allValues.rpEffectValues) ? allValues.rpEffectValues : []} changed={changed} onChange={(types, values) => onChangeMany({ rpEffects: types, rpEffectValues: values })} />;
   if (metadata.id === "effectTypes" || metadata.id === "effectValues") return null;
-  if (metadata.id === "effectIds") return <EffectEditor metadata={metadata} ids={Array.isArray(value) ? value : []} types={Array.isArray(allValues.effectTypes) ? allValues.effectTypes : []} values={Array.isArray(allValues.effectValues) ? allValues.effectValues : []} changed={changed} onChange={onChangeMany} />;
+  if (metadata.id === "effectIds") return <EffectEditor metadata={metadata} ids={Array.isArray(value) ? value : []} types={Array.isArray(allValues.effectTypes) ? allValues.effectTypes : []} values={Array.isArray(allValues.effectValues) ? allValues.effectValues : []} changed={changed} onChange={onChangeMany} resolved={resolvedEffects} onResolve={onResolveEffect} />;
+  if (metadata.id === "prerequisiteSkillIds") return <PrerequisiteEditor ids={Array.isArray(value) ? value : []} resolved={resolvedSkills} changed={changed} onChange={(ids) => onChangeMany({ prerequisiteSkillIds: ids })} onResolve={onResolveSkill} />;
+  if (metadata.control === "reference") return <div className={`${className} skillRefField`}><span>{metadata.label}</span>
+    <SkillReferencePicker value={Number(value ?? EMPTY_REF)} resolved={resolvedSkills} label={metadata.label} onPick={(tblidx) => onChange(String(tblidx))} onResolve={onResolveSkill} />
+    <small>{metadata.sourceField}{metadata.help ? ` · ${metadata.help}` : ""}</small></div>;
+  if (derivedOptions?.length) return <DerivedOptionField label={metadata.label} sourceField={metadata.sourceField} help={metadata.help} value={Number(value ?? 0)} options={derivedOptions} changed={changed} onChange={onChange} />;
   if (metadata.id === "classFlag") return <ClassFlagField metadata={metadata} value={Number(value ?? 0)} changed={changed} requiredCharacterClass={requiredCharacterClass} onChange={onChange} />;
   if (metadata.id === "functionFlag") return <FunctionFlagField metadata={metadata} value={Number(value ?? 0)} changed={changed} onChange={onChange} />;
   if (metadata.control === "checkbox") return <label className={`${className} checkboxField`}><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /><span><strong>{metadata.label}</strong><small>{metadata.sourceField}</small></span></label>;
   if (metadata.control === "select" && metadata.options) return <label className={className}><span>{metadata.label}</span><select value={Number(value ?? 0)} disabled={metadata.locked} onChange={(event) => onChange(event.target.value)}>{metadata.options.map((option) => <option key={option.value} value={option.value}>{option.label} ({option.value})</option>)}</select><small>{metadata.sourceField}{metadata.locked ? " · definido pela categoria" : ""}</small></label>;
   const inputType = metadata.control === "text" || metadata.control === "number-list" ? "text" : "number";
-  const referenceListId = `skill-reference-${metadata.id}`;
   const relation = relationText(metadata, value, relatedSkills);
-  return <label className={className}><span>{metadata.label}{metadata.required ? " *" : ""}</span>{metadata.id === "description" ? <textarea value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} maxLength={2000} /> : <input type={inputType} list={metadata.control === "reference" ? referenceListId : undefined} value={displayValue(value) === "—" ? "" : displayValue(value)} min={metadata.min} max={metadata.max} step={metadata.step} maxLength={metadata.control === "text" ? (metadata.id === "internalName" ? 40 : metadata.id === "iconName" ? 32 : 64) : undefined} disabled={lockTblidx && metadata.id === "tblidx"} onChange={(event) => onChange(event.target.value)} required={metadata.required} />}
-    {metadata.control === "reference" && <datalist id={referenceListId}>{relatedSkills.map((skill) => <option key={skill.tblidx} value={skill.tblidx}>{skill.name} · Grade {skill.grade}</option>)}</datalist>}
+  return <label className={className}><span>{metadata.label}{metadata.required ? " *" : ""}</span>{metadata.id === "description" ? <textarea value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} maxLength={2000} /> : <input type={inputType} value={displayValue(value) === "—" ? "" : displayValue(value)} min={metadata.min} max={metadata.max} step={metadata.step} maxLength={metadata.control === "text" ? (metadata.id === "internalName" ? 40 : metadata.id === "iconName" ? 32 : 64) : undefined} disabled={lockTblidx && metadata.id === "tblidx"} onChange={(event) => onChange(event.target.value)} required={metadata.required} />}
     <small>{metadata.control === "number-list" ? "Valores separados por vírgula · " : ""}{metadata.sourceField}{metadata.help ? ` · ${metadata.help}` : ""}</small>{relation && <span className="fieldRelationHint">{relation}</span>}</label>;
 }
 
@@ -343,7 +426,7 @@ function RpBonusEditor({ metadata, types, values, changed, onChange }: { metadat
  * bySkill_Effect_Type[2] diz como aSkill_Effect_Value[2] deve ser interpretado, entao os tres
  * campos aparecem juntos: efeito, forma de aplicar e valor, um bloco por efeito.
  */
-function EffectEditor({ metadata, ids, types, values, changed, onChange }: { metadata: SkillCreationField; ids: number[]; types: number[]; values: number[]; changed: boolean; onChange: (values: Record<string, SkillDraftValue>) => void }) {
+function EffectEditor({ metadata, ids, types, values, changed, onChange, resolved, onResolve }: { metadata: SkillCreationField; ids: number[]; types: number[]; values: number[]; changed: boolean; onChange: (values: Record<string, SkillDraftValue>) => void; resolved: Map<number, SystemEffectEntry>; onResolve: (effect: SystemEffectEntry) => void }) {
   const VAZIO = 4294967295;
   const nIds = Array.from({ length: 2 }, (_, index) => ids[index] ?? VAZIO);
   const nTypes = Array.from({ length: 2 }, (_, index) => types[index] ?? 255);
@@ -354,15 +437,15 @@ function EffectEditor({ metadata, ids, types, values, changed, onChange }: { met
     onChange({ [campo]: base });
   }
   return <fieldset className={`draftField effectField${changed ? " changed" : ""}`}><legend>Efeitos do sistema</legend>
-    <p>Até dois efeitos. O TBLIDX aponta para Table_System_Effect_Data; a forma de aplicar define como o valor ao lado é lido.</p>
-    <div className="rpBonusGrid">{nIds.map((id, index) => {
+    <p>Até dois efeitos de Table_System_Effect_Data, escolhidos pelo nome. A forma de aplicar define como o valor ao lado é lido.</p>
+    <div className="effectSlotGrid">{nIds.map((id, index) => {
       const usado = id !== VAZIO && id !== 0;
-      return <div key={index} className={usado ? "rpBonusSlot on" : "rpBonusSlot"}>
+      return <div key={index} className={usado ? "effectSlot on" : "effectSlot"}>
         <strong>Efeito {index + 1}</strong>
-        <label><span>TBLIDX do efeito</span><input type="number" value={id} onChange={(event) => change("effectIds", index, Number(event.target.value))} /></label>
+        <div className="effectSlotField"><span>Efeito</span><SystemEffectPicker value={id} resolved={resolved} onPick={(tblidx) => change("effectIds", index, tblidx)} onResolve={onResolve} /></div>
         <label><span>Como aplicar</span><select value={nTypes[index]} onChange={(event) => change("effectTypes", index, Number(event.target.value))}>{SYSTEM_EFFECT_APPLY_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         <label><span>Valor</span><input type="number" step="any" value={nValues[index]} onChange={(event) => change("effectValues", index, Number(event.target.value))} /></label>
-        <small>{usado ? `${EFFECT_APPLY_LABELS.get(nTypes[index]) ?? "Tipo desconhecido"} · use ${VAZIO} no TBLIDX para desativar` : "Espaço vazio"}</small>
+        <small>{usado ? `${EFFECT_APPLY_LABELS.get(nTypes[index]) ?? "Tipo desconhecido"} · o × ao lado do nome esvazia a posição` : "Espaço vazio"}</small>
       </div>;
     })}</div>
     <small>{metadata.sourceField} + bySkill_Effect_Type[2] + aSkill_Effect_Value[2] · Tipos de eSYSTEM_EFFECT_APPLY_TYPE.</small></fieldset>;

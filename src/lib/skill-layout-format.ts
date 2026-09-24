@@ -204,7 +204,7 @@ export function serializeSkillLayout(
   for (const cell of layout.cells) {
     const tblidx = placements.get(`${cell.column},${cell.row}`);
     if (tblidx === undefined || tblidx === cell.tblidx) continue;
-    edits.push({ start: cell.start, end: cell.end, text: renderCell(cell, tblidx, tblidx === null ? cell.kind : kindPorSkill.get(tblidx) ?? cell.kind) });
+    edits.push({ start: cell.start, end: cell.end, text: renderCell(cell, tblidx, tblidx === null ? cell.kind : kindPorSkill.get(tblidx) ?? "skill") });
   }
 
   for (const line of layout.lines) {

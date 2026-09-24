@@ -158,7 +158,9 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
           <h1>Skills do Dbo World</h1>
           <p>Consulte requisitos, efeitos, progressão e ícones de Table_Skill_Data.rdf.</p>
         </div>
-        <div className="safetyCard"><span>◆</span><div><strong>Somente leitura</strong><small>Esta aba não aprende nem modifica skills</small></div></div>
+        {/* A aba lista em modo de consulta, mas "Editar" abre o rascunho que publica no RDF.
+            Prometer somente leitura aqui contradiz o próprio botão. */}
+        <div className="safetyCard"><span>◆</span><div><strong>Edita com rascunho</strong><small>Nada muda até você revisar e publicar; não ensina skills a jogadores</small></div></div>
       </section> : activeView === "skillTree" ? <section className="heroPanel">
         <div>
           <div className="eyebrow">LAYOUT DO CLIENTE</div>
@@ -167,8 +169,10 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
         </div>
         <div className="safetyCard"><span>◆</span><div><strong>Grava no cliente</strong><small>Publicar regrava o gui.pak; o jogador precisa reabrir o cliente</small></div></div>
       </section> : activeView === "mobs" ? <section className="heroPanel">
-        <div><div className="eyebrow">CATÁLOGO DO JOGO</div><h1>Mobs do Dbo World</h1><p>Consulte atributos de combate e recompensas de Table_MOB_Data.rdf.</p></div>
-        <div className="safetyCard"><span>◆</span><div><strong>Somente leitura</strong><small>Esta aba não altera o RDF nem mobs ativos</small></div></div>
+        <div><div className="eyebrow">CATÁLOGO DO JOGO</div><h1>Mobs do Dbo World</h1><p>Atributos, drops e skills de Table_MOB_Data.rdf e das tabelas de grupo e bag.</p></div>
+        {/* Os atributos de combate continuam só de leitura, mas drops e skills passaram a ser
+            editáveis e publicáveis daqui -- dizer "somente leitura" aqui viraria promessa falsa. */}
+        <div className="safetyCard"><span>◆</span><div><strong>Drops e skills editáveis</strong><small>Atributos de combate são só leitura; drops e skills publicam no RDF com backup</small></div></div>
       </section> : <section className="heroPanel">
         <div>
           <div className="eyebrow">INFRAESTRUTURA LOCAL</div>

@@ -7,7 +7,7 @@ import Image from "next/image";
 import { ItemDraftCreator } from "@/components/item-draft-creator";
 import { getItemCreationDefinition } from "@/lib/item-creation-definitions";
 
-import type { ItemCatalogEntry, ItemCatalogResponse } from "@/lib/types";
+import type { GambleRewardsResponse, ItemCatalogEntry, ItemCatalogResponse } from "@/lib/types";
 
 const RANK_NAMES: Record<number, string> = {
   0: "Sem rank",
@@ -220,7 +220,68 @@ function ItemDetails({ item, onClose }: { item: ItemCatalogEntry; onClose: () =>
       <div className="modalHeader"><div><div className="eyebrow">ITEM DO CATÁLOGO</div><h2 id="item-details-title">{item.name}</h2><p>#{item.tblidx} · {item.iconName || "sem ícone"}</p></div><button className="closeButton" onClick={onClose} aria-label="Fechar">×</button></div>
       <div className="modelNames"><span>Modelo <code>{item.modelName || "—"}</code></span><span>Subarma <code>{item.subWeaponModelName || "—"}</code></span></div>
       <div className="itemDetailGrid">{details.map(([label, value]) => <div key={String(label)}><small>{label}</small><strong>{value}</strong></div>)}</div>
+      <GambleRewards item={item} />
       <div className="readonlyNotice"><strong>Consulta somente leitura</strong><span>Esta tela não altera o RDF e não entrega o item a nenhum jogador.</span></div>
     </section>
   </div>;
+}
+
+/**
+ * O que uma caixa de aposta pode devolver.
+ *
+ * Só aparece quando o item realmente tem o sorteio ligado -- a API devolve null para tudo o
+ * mais e a seção some. O texto do topo muda conforme o modo, porque a diferença entre
+ * "entrega um só" e "entrega todos que passarem" muda completamente o que você recebe ao usar.
+ */
+function GambleRewards({ item }: { item: ItemCatalogEntry }) {
+  const [data, setData] = useState<GambleRewardsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async (signal: AbortSignal) => {
+    setLoading(true); setError(""); setData(null);
+    try {
+      const response = await fetch(`/api/items/${item.tblidx}/gamble`, { signal, cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Falha ao carregar os prêmios.");
+      setData(body.gamble as GambleRewardsResponse | null);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Falha ao carregar os prêmios.");
+    } finally { if (!signal.aborted) setLoading(false); }
+  }, [item.tblidx]);
+
+  useEffect(() => { const controller = new AbortController(); const request = window.setTimeout(() => void load(controller.signal), 0); return () => { window.clearTimeout(request); controller.abort(); }; }, [load]);
+
+  if (loading) return <div className="loadingState"><span className="spinner" /> Verificando se este item sorteia prêmios...</div>;
+  if (error) return <div className="errorBanner"><strong>Falha nos prêmios</strong><span>{error}</span></div>;
+  if (!data) return null;
+
+  const somaChances = data.rewards.reduce((total, reward) => total + reward.chance, 0);
+  const modo = data.drawMode === "one"
+    ? "O servidor sorteia e entrega apenas UM prêmio, escolhido entre os que passarem na chance."
+    : data.drawMode === "each"
+      ? "Cada prêmio é sorteado sozinho: pode vir mais de um de uma vez."
+      : "Esta caixa não devolve nada como está.";
+
+  return <section className="gambleSection">
+    <div className="dropSectionHead">
+      <h3>O que esta aposta pode devolver</h3>
+      {data.rewards.length > 0 && <span className="catalogBadge">{data.rewards.length} prêmio{data.rewards.length === 1 ? "" : "s"} possíveis</span>}
+      {data.drawMode !== "none" && <span className="dropDrawBadge">{data.drawMode === "one" ? "1 prêmio por uso" : "pode vir mais de um"}</span>}
+    </div>
+    <p className="dropNote">{modo} Se nenhum passar, o servidor repete o sorteio — então sempre sai alguma coisa.</p>
+    {data.warnings.map((warning) => <div className="errorBanner subtle" key={warning}><strong>Atenção</strong><span>{warning}</span></div>)}
+    {data.rewards.length > 0 && <ul className="gambleRewardList">
+      {data.rewards.map((reward, index) => <li key={`${index}-${reward.tblidx}`} className={reward.missing || reward.unsupportedType ? "dropItemMissing" : undefined}>
+        <ItemIcon item={{ ...item, iconName: reward.iconName }} />
+        <div>
+          <strong>{reward.name}</strong>
+          <small>#{reward.tblidx}{reward.minQuantity === reward.maxQuantity ? ` · ${formatNumber(reward.minQuantity)}x` : ` · ${formatNumber(reward.minQuantity)} a ${formatNumber(reward.maxQuantity)}x`}</small>
+        </div>
+        <em>{reward.chance % 1 === 0 ? reward.chance : reward.chance.toFixed(2)}%</em>
+      </li>)}
+    </ul>}
+    {data.rewards.length > 0 && <p className="dropNote">Soma das chances: {somaChances % 1 === 0 ? somaChances : somaChances.toFixed(2)}% · sorteio #{data.probabilityTblidx} de table_quest_probability_data.rdf</p>}
+  </section>;
 }

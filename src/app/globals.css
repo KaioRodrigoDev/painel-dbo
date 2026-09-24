@@ -538,6 +538,176 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
 .itemDetailGrid small { color: var(--faint); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
 .itemDetailGrid strong { overflow-wrap: anywhere; color: #fff; font-family: var(--font-mono); font-size: 10px; }
 
+/* ===================== Drops do mob ===================== */
+
+/*
+ * A hierarquia visual repete a do jogo: origem > grupo > bag > item. Cada nível recua um
+ * pouco e escurece o fundo, para que dê para ver de relance de onde o item vem sem ler a
+ * nota — a chance real depende disso.
+ */
+.dropSection { display: grid; gap: 10px; margin-bottom: 18px; }
+.dropSectionHead { display: flex; align-items: center; gap: 10px; }
+.dropSectionHead h3 { font-family: var(--font-display); font-size: 15px; }
+.dropPageHeaderActions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+/* O resumo responde de cara às perguntas que antes exigiam abrir grupo por grupo. */
+.dropPageSummary { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 9px; }
+.dropPageSummary > div { min-width: 0; display: grid; gap: 4px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--sub); }
+.dropPageSummary small { color: var(--faint); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+.dropPageSummary strong { overflow-wrap: anywhere; color: #fff; font-family: var(--font-mono); font-size: 12px; }
+.errorBanner.subtle { border-color: rgba(255, 193, 7, 0.45); color: var(--amber-ink); background: rgba(255, 193, 7, 0.12); font-size: 11px; }
+.dropOrigin { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--sub); }
+.dropOrigin > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.dropOrigin > header strong { color: #fff; font-size: 12px; }
+.dropDrawBadge { display: inline-flex; padding: 5px 7px; border-radius: 999px; color: var(--amber-ink); background: rgba(255, 193, 7, 0.16); font-size: 9px; font-weight: 900; white-space: nowrap; }
+.dropNote { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.dropNote strong { color: var(--amber-ink); }
+.dropGroup { border: 1px solid var(--line-soft); border-radius: 9px; background: var(--sub-2); }
+.dropGroup > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 10px 12px; cursor: pointer; }
+.dropGroup > summary:hover { background: rgba(255, 255, 255, 0.04); }
+.dropGroup > summary strong { color: #fff; font-size: 11px; }
+.dropGroup > summary small { color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.dropGroup > .dropNote { padding: 0 12px 8px; }
+.dropBag { margin: 0 12px 10px; padding: 9px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0, 0, 0, 0.2); }
+.dropBagHead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+.dropBagHead strong { overflow: hidden; color: var(--gold); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dropBagHead small { color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.dropProb { margin-left: auto; color: var(--blue-ink); font-family: var(--font-mono); font-size: 10px; font-weight: 900; }
+.dropItems { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 5px; list-style: none; }
+.dropItems li { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 7px; border-radius: 7px; background: rgba(255, 255, 255, 0.04); }
+.dropItemMissing { opacity: 0.55; }
+.dropItemIcon { width: 26px; height: 26px; display: grid; overflow: hidden; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 6px; color: var(--faint); background: #0b1119; font-size: 8px; }
+.dropItemIcon img { width: 100%; height: 100%; object-fit: contain; }
+.dropItemName { overflow: hidden; flex: 1 1 auto; min-width: 0; color: #fff; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dropItems code { flex: 0 0 auto; color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.dropItems em { flex: 0 0 auto; color: var(--blue-ink); font-family: var(--font-mono); font-size: 9px; font-style: normal; font-weight: 900; }
+
+/* ===================== Prêmios de uma aposta ===================== */
+
+.gambleSection { display: grid; gap: 10px; margin-bottom: 18px; }
+.gambleRewardList { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 6px; list-style: none; }
+.gambleRewardList li { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 7px 9px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(255, 255, 255, 0.04); }
+.gambleRewardList li > div { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.gambleRewardList strong { overflow: hidden; color: #fff; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.gambleRewardList small { color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.gambleRewardList em { flex: 0 0 auto; color: var(--blue-ink); font-family: var(--font-mono); font-size: 10px; font-style: normal; font-weight: 900; }
+.gambleRewardList .itemIconPlaceholder { width: 28px; height: 28px; border-radius: 7px; }
+
+/* ===================== Referências na edição de skill ===================== */
+
+/*
+ * Campos que antes pediam um TBLIDX digitado. O bloco de cima mostra o que está gravado com
+ * nome e ícone; o de baixo busca pelo nome. Quem já sabe o número continua podendo colar no
+ * campo de busca, porque a busca também casa com o TBLIDX.
+ */
+.skillRefPicker { display: grid; gap: 6px; min-width: 0; }
+.skillRefCurrent { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0, 0, 0, 0.22); }
+.skillRefCurrent > div { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.skillRefCurrent strong { overflow: hidden; color: #fff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.skillRefCurrent small { color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.skillRefClear { flex: 0 0 auto; padding: 3px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: rgba(255, 255, 255, 0.05); font-size: 10px; }
+.skillRefClear:hover { color: #fff; background: rgba(244, 67, 54, 0.22); }
+.skillPrereqField { display: grid; gap: 10px; }
+.skillPrereqPair { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--sub-2); }
+.skillPrereqHead { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.skillPrereqHead strong { color: var(--gold); font-size: 11px; }
+.skillPrereqRow { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.skillPrereqRow > div { display: grid; gap: 4px; min-width: 0; }
+.skillPrereqRow > div > span { color: var(--faint); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+/* O texto das opções ("255 · 1897 skills · ex.: ...") é longo e, com base automática, o
+   select empurrava a linha para fora do campo. Base zero deixa a largura vir da grade. */
+.derivedOptionRow { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 7px; }
+.derivedOptionRow select { width: 100%; min-width: 0; }
+.derivedOptionRow input { width: 100%; min-width: 0; font-family: var(--font-mono); }
+
+/* ===================== Editor de drops ===================== */
+
+.dropEditButton {
+  margin-left: auto;
+  min-height: 26px;
+  padding: 4px 9px;
+  color: #fff;
+  border: 1px solid rgba(255, 111, 0, 0.5);
+  border-radius: 7px;
+  background: rgba(255, 111, 0, 0.15);
+  font-size: 9px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.dropEditButton:hover { background: rgba(255, 111, 0, 0.28); }
+.dropGroup > summary .dropEditButton { flex: 0 0 auto; }
+.dropEditorPage { display: grid; gap: 18px; }
+/*
+ * Duas colunas: o formulário à esquerda e, à direita, o que o operador precisa ter à vista
+ * enquanto mexe — o alcance da edição e como o servidor lê o registro. A lateral gruda no
+ * topo porque a lista de posições é mais alta que a tela e o aviso de alcance é justamente
+ * o que não pode sair de vista ao rolar.
+ */
+.dropEditorWorkspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.dropEditorMain { display: grid; gap: 14px; min-width: 0; }
+.dropEditorSide { position: sticky; top: 12px; display: grid; gap: 12px; min-width: 0; }
+.dropEditorSide .itemDetailGrid { grid-template-columns: 1fr; margin: 0; }
+.dropEditorActions { display: flex; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+.dropScalarGrid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; }
+.dropCheckboxField { display: flex; align-items: center; gap: 8px; align-self: end; }
+.dropCheckboxField input { width: 16px; height: 16px; }
+.dropSlotsHeader { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 6px 0 9px; }
+.dropSlotsHeader strong { color: #fff; font-size: 12px; }
+.dropSlotsHeader span { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.dropSlotsHeader button { margin-left: auto; }
+.dropSlotList { display: grid; gap: 7px; margin-bottom: 16px; list-style: none; counter-reset: none; }
+.dropSlotList li { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--sub-2); }
+.dropSlotIndex { display: grid; place-items: center; flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; color: var(--faint); background: rgba(255, 255, 255, 0.07); font-family: var(--font-mono); font-size: 9px; font-weight: 900; }
+.dropSlotBody { display: grid; gap: 5px; flex: 1 1 auto; min-width: 0; }
+.dropSlotName { overflow: hidden; color: #fff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.dropSlotPicker { display: flex; gap: 6px; }
+/* Um TBLIDX de item chega a 8 dígitos e o campo precisa mostrá-lo inteiro; as setinhas do
+   input numérico só roubavam essa largura e não servem para escolher um id. */
+.dropSlotId { width: 142px; flex: 0 0 auto; font-family: var(--font-mono); }
+.dropSlotId::-webkit-outer-spin-button, .dropSlotId::-webkit-inner-spin-button { margin: 0; appearance: none; }
+.dropSlotId { appearance: textfield; }
+.dropSlotSearch { position: relative; flex: 1 1 auto; min-width: 0; }
+.dropSlotSearch input { width: 100%; }
+.dropSlotSearching { position: absolute; top: 50%; right: 9px; transform: translateY(-50%); color: var(--faint); font-size: 12px; }
+.dropSlotOptions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--panel-solid);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  list-style: none;
+}
+.dropSlotOptions button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 0; border-radius: 0; color: #fff; background: transparent; font-size: 10px; text-align: left; }
+.dropSlotOptions button:hover { background: rgba(255, 111, 0, 0.18); }
+.dropSlotOptions span { overflow: hidden; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
+.dropSlotOptions code { flex: 0 0 auto; color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.dropSlotProbability { display: grid; gap: 3px; flex: 0 0 auto; width: 84px; }
+.dropSlotProbability span { color: var(--faint); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+.dropSlotActions { display: flex; gap: 4px; flex: 0 0 auto; }
+.dropSlotActions button { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: rgba(255, 255, 255, 0.05); font-size: 12px; }
+.dropSlotActions button:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.14); }
+.dropSlotActions button:disabled { opacity: 0.35; }
+/* A linha de skill tem dois números além do seletor de condição, então precisa quebrar antes
+   que o nome da skill fique espremido. */
+.mobSkillList li { flex-wrap: wrap; }
+.mobSkillList .dropSlotBody { flex: 1 1 320px; }
+.mobSkillBasis { display: grid; gap: 3px; flex: 0 0 auto; width: 168px; }
+.mobSkillBasis span { color: var(--faint); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+.mobSkillList .dropSlotName small { color: var(--muted); font-family: var(--font-mono); font-size: 9px; font-weight: 400; }
+.dropPublishReview { display: grid; gap: 11px; margin-top: 18px; padding: 15px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--sub); }
+.dropPublishReview h3 { font-family: var(--font-display); font-size: 15px; }
+.dropPublishReview code { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 9px; }
+.dropChangeTable td { vertical-align: top; }
+.dropChangeTable small { color: var(--muted); font-size: 10px; }
+.dropChangeTable strong { color: var(--gold); font-size: 10px; }
+.dropAcknowledge { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 11px; }
+.dropAcknowledge input { width: 16px; height: 16px; }
+
 /* ===================== Criador de drafts ===================== */
 
 .itemDraftCreator { display: grid; gap: 18px; }
@@ -600,7 +770,18 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
 .draftField textarea { min-height: 82px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--ink); background: #000; outline: none; }
 .draftField textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 0, 0.2); }
 .draftField small { overflow-wrap: anywhere; color: var(--faint); font-family: var(--font-mono); font-size: 8px; font-weight: 500; line-height: 1.4; }
-.draftFieldGrid > .bitFlagField { grid-column: 1 / -1; }
+/*
+ * Blocos que não cabem em meia linha.
+ *
+ * A grade de campos tem duas colunas, e só o bitflag ganhava a linha inteira. Os outros
+ * quatro têm conteúdo composto — seletor com nome e busca, dois números ao lado, dois pares
+ * de skill — e em 412px o campo útil sobrava com 26px a 49px, pequeno demais para usar.
+ */
+.draftFieldGrid > .bitFlagField,
+.draftFieldGrid > .effectField,
+.draftFieldGrid > .rpBonusField,
+.draftFieldGrid > .skillPrereqField,
+.draftFieldGrid > .skillRefField { grid-column: 1 / -1; }
 .bitFlagField { min-inline-size: 0; margin: 0; }
 .bitFlagField legend { padding: 0 4px; color: rgba(255, 255, 255, 0.85); font-size: 10px; font-weight: 900; }
 .bitFlagGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 5px 0 9px; }
@@ -619,11 +800,24 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
 .rpBonusField legend { padding: 0 4px; color: rgba(255, 255, 255, 0.85); font-size: 10px; font-weight: 900; }
 .rpBonusField > p { margin: 4px 0 10px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .rpBonusGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 9px; }
-.rpBonusGrid > div { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 6px 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--sub); }
+/* O rótulo do valor chega a "Valor (segundos / chance)". Com ele na mesma linha do campo
+   sobravam 26px para digitar, então o rótulo passou para cima e a coluna do número cresceu. */
+.rpBonusGrid > div { display: grid; grid-template-columns: minmax(0, 1fr) 136px; gap: 6px 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--sub); }
 .rpBonusGrid > div > strong { grid-column: 1 / -1; color: rgba(255, 255, 255, 0.85); font-size: 8px; }
 .rpBonusGrid select { min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: #000; }
-.rpBonusGrid label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px; color: var(--muted); font-size: 8px; }
-.rpBonusGrid input { min-width: 0; height: 36px; }
+.rpBonusGrid label { display: grid; grid-template-columns: minmax(0, 1fr); align-items: end; gap: 4px; color: var(--muted); font-size: 8px; }
+.rpBonusGrid input { width: 100%; min-width: 0; height: 36px; }
+
+/* Um efeito por linha: o seletor por nome precisa de espaço, e os dois campos que o
+   acompanham têm largura fixa porque o conteúdo deles não cresce. */
+.effectSlotGrid { display: grid; gap: 9px; margin-bottom: 9px; }
+.effectSlot { display: grid; grid-template-columns: minmax(0, 1fr) 224px 136px; gap: 7px 10px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--sub); }
+.effectSlot.on { border-color: rgba(255, 111, 0, 0.45); }
+.effectSlot > strong, .effectSlot > small { grid-column: 1 / -1; }
+.effectSlot > strong { color: rgba(255, 255, 255, 0.85); font-size: 8px; }
+.effectSlot > label, .effectSlot > .effectSlotField { display: grid; align-content: start; gap: 4px; min-width: 0; color: var(--muted); font-size: 8px; }
+.effectSlot select { width: 100%; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: #000; }
+.effectSlot input { width: 100%; min-width: 0; height: 36px; }
 .checkboxField { display: flex; align-items: center; gap: 9px; }
 .checkboxField input { width: 16px; min-width: 16px; height: 16px; accent-color: var(--orange); }
 .checkboxField span { display: grid; gap: 3px; }
@@ -764,10 +958,20 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
   .catalogSource > span { display: none; }
   .draftCreatorHeader { flex-direction: column; }
   .draftSetupGrid, .draftWorkspace { grid-template-columns: 1fr; }
+  /* Numa coluna a lateral vai para cima do formulário, e grudar no topo só atrapalharia. */
+  .dropEditorWorkspace { grid-template-columns: 1fr; }
+  .dropEditorSide { position: static; order: -1; }
+  .dropSlotList li { flex-wrap: wrap; }
+  .dropSlotBody { flex-basis: 100%; }
+  .dropSlotPicker { flex-wrap: wrap; }
+  .dropSlotSearch { flex-basis: 100%; }
   .draftFieldGrid { grid-template-columns: 1fr; }
   .publishChangeList > div:not(.publishChangeHeader) { grid-template-columns: 1fr; }
   .publishChangeList b { transform: rotate(90deg); justify-self: center; }
   .skillRelationSummary, .bitFlagGrid, .bitFlagGrid.compact, .rpBonusGrid { grid-template-columns: 1fr; }
+  .skillPrereqRow { grid-template-columns: 1fr; }
+  .effectSlot { grid-template-columns: 1fr; }
+  .rpBonusGrid > div { grid-template-columns: 1fr; }
   .draftDiffPanel { position: static; max-height: none; }
 }
 
@@ -810,6 +1014,14 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
   display: grid; gap: 7px; padding: 12px; max-height: 70vh; overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9px; font-size: 10px;
 }
+.skillTreeSidebar { display: grid; gap: 14px; min-width: 0; }
+.skillTreeAvailable { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); transition: border-color .15s, background .15s; }
+.skillTreeAvailable.dropReady { border-color: var(--orange); background: rgba(255,111,0,.08); }
+.skillTreeAvailable > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.skillTreeAvailable > header div { display: grid; gap: 3px; }.skillTreeAvailable > header strong { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }.skillTreeAvailable > header small, .skillTreeAvailable > small { color: var(--muted); font-size: 8px; line-height: 1.4; }.skillTreeAvailable > header span { padding: 4px 7px; color: var(--gold); border-radius: 99px; background: rgba(255,215,0,.1); font-size: 9px; font-weight: 900; }
+.skillTreeAvailableList { display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
+.skillTreeAvailableList article { display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: center; gap: 9px; padding: 7px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0,0,0,.24); cursor: grab; }
+.skillTreeAvailableList article:active { cursor: grabbing; }.skillTreeAvailableList article:hover { border-color: rgba(255,193,7,.45); }.skillTreeAvailableList img { width: 38px; height: 38px; border-radius: 5px; object-fit: cover; }.skillTreeAvailableList article > div { min-width: 0; display: grid; gap: 3px; }.skillTreeAvailableList article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }.skillTreeAvailableList article small { color: var(--muted); font-size: 8px; }
 .skillTreeLegend > strong { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; opacity: 0.75; }
 .skillTreeLegend > small { margin-top: 7px; line-height: 1.45; }
 .skillTreeArrowRow { display: grid; gap: 4px; padding: 7px; border-radius: 7px; background: rgba(0, 0, 0, 0.28); }
