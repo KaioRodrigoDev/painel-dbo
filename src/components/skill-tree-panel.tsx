@@ -10,7 +10,7 @@ const CHARACTER_CLASSES = ["Lutador humano", "Místico humano", "Engenheiro huma
 const PAD = 14, CELL_W = 64, CELL_H = 58, GAP = 6;
 const COL_PITCH = CELL_W + GAP, ROW_PITCH = CELL_H + GAP;
 
-type LayoutClass = { classIndex: number; prefix: string; label: string | null };
+type LayoutClass = { classIndex: number; prefix: string; label: string | null; kind?: "skill" | "action" };
 type LayoutCell = { column: number; row: number; kind: string; tblidx: number | null };
 type LineDefinition = { kind: string; beginSkill: number; endSkill: number; beginAttach: string; endAttach: string };
 type LayoutLine = LineDefinition & { column: number; row: number; name: string; active: boolean };
@@ -220,6 +220,10 @@ export function SkillTreePanel() {
   }
 
   const setasAtivas = useMemo(() => [...lines].filter(([, line]) => line !== null) as [string, LineDefinition][], [lines]);
+  // A arvore de acoes vem de Table_Action_Data, nao da tabela de skills. Chamar as celulas de
+  // "skill" e mostrar "grau 0" ali seria errado: acao nao tem grau nem cadeia de niveis.
+  const arvoreDeAcoes = classes.find((entry) => entry.classIndex === classIndex)?.kind === "action";
+  const substantivo = arvoreDeAcoes ? "ações" : "skills";
   const alturaGrade = PAD * 2 + linhasVisiveis.length * ROW_PITCH;
   const larguraGrade = PAD * 2 + (layout?.columns ?? 0) * COL_PITCH;
 
@@ -230,7 +234,7 @@ export function SkillTreePanel() {
           {classes.map((entry) => <option key={entry.classIndex} value={entry.classIndex}>{entry.label ?? CHARACTER_CLASSES[entry.classIndex] ?? `Classe `} ({entry.prefix})</option>)}
         </select>
       </label>
-      {layout && <span className="muted">{layout.packedPath} · {layout.skills.length} skills · {setasAtivas.length} setas</span>}
+      {layout && <span className="muted">{layout.packedPath} · {layout.skills.length} {substantivo} · {setasAtivas.length} setas</span>}
       <div className="skillTreeActions">
         <button type="button" className={linkMode ? "publishDraftButton" : "catalogClearButton"} onClick={() => { setLinkMode((atual) => !atual); setLinkFrom(null); }} disabled={!layout}>
           {linkMode ? "Sair do modo seta" : "Ligar skills"}
@@ -270,7 +274,7 @@ export function SkillTreePanel() {
             onDragLeave={() => setHovered((atual) => (atual === key ? null : atual))}
             onDrop={(event) => { event.preventDefault(); if (dragging) moveSkill(dragging, key); setDragging(null); setHovered(null); }}
             onClick={() => { if (linkMode && tblidx !== null) { if (linkFrom === null) setLinkFrom(tblidx); else conectar(tblidx); } }}
-            title={skill ? `${skill.name} · #${skill.tblidx} · grau ${skill.grade} · bloco ${cell.kind}` : `Célula vazia (${cell.column}, ${cell.row}) · bloco ${cell.kind}`}
+            title={skill ? (arvoreDeAcoes ? `${skill.name} · #${skill.tblidx} · ${skill.internalName || "ação"}` : `${skill.name} · #${skill.tblidx} · grau ${skill.grade} · bloco ${cell.kind}`) : `Célula vazia (${cell.column}, ${cell.row}) · bloco ${cell.kind}`}
           >
             {skill && skill.iconName
               // eslint-disable-next-line @next/next/no-img-element
@@ -283,16 +287,16 @@ export function SkillTreePanel() {
       <aside className="skillTreeSidebar">
       <div className={`skillTreeAvailable${dragging && !dragging.startsWith("available:") ? " dropReady" : ""}`}
         onDragOver={(event) => event.preventDefault()} onDrop={() => dragging && removeFromGrid(dragging)}>
-        <header><div><strong>Skills disponíveis</strong><small>Arraste para uma célula vazia</small></div><span>{skillsForaDaGrade.length}</span></header>
+        <header><div><strong>{arvoreDeAcoes ? "Ações disponíveis" : "Skills disponíveis"}</strong><small>Arraste para uma célula vazia</small></div><span>{skillsForaDaGrade.length}</span></header>
         <div className="skillTreeAvailableList">
           {skillsForaDaGrade.map((skill) => <article key={skill.tblidx} draggable={!linkMode}
             onDragStart={() => setDragging(`available:${skill.tblidx}`)} onDragEnd={() => { setDragging(null); setHovered(null); }}
-            title={`${skill.name} · #${skill.tblidx} · início da cadeia de níveis`}>
+            title={arvoreDeAcoes ? `${skill.name} · #${skill.tblidx}` : `${skill.name} · #${skill.tblidx} · início da cadeia de níveis`}>
             {skill.iconName
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={`/api/skills/icons/${encodeURIComponent(skill.iconName)}`} alt="" draggable={false} />
               : <span className="skillTreeFallback">{skill.tblidx}</span>}
-            <div><strong>{skill.name}</strong><small>#{skill.tblidx} · grau {skill.grade}{skill.nextSkillId !== 0xffffffff ? ` · próximo #${skill.nextSkillId}` : ""}</small></div>
+            <div><strong>{skill.name}</strong><small>#{skill.tblidx}{arvoreDeAcoes ? (skill.internalName ? ` · ${skill.internalName}` : "") : ` · grau ${skill.grade}${skill.nextSkillId !== 0xffffffff ? ` · próximo #${skill.nextSkillId}` : ""}`}</small></div>
           </article>)}
           {!skillsForaDaGrade.length && <small className="muted">Todas as skills desta classe já estão na grade.</small>}
         </div>

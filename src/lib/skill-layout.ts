@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { loadPackIndex, resolveClientPackDirectory } from "@/lib/pack-index";
 import { readPackFileContent, replacePackFiles } from "@/lib/pack-writer";
+import { loadActionCatalog } from "@/lib/action-catalog";
 import { loadSkillCatalog } from "@/lib/skill-catalog";
 import { parseSkillLayout, serializeSkillLayout, type LayoutLine, type LineDefinition } from "@/lib/skill-layout-format";
 
@@ -11,7 +12,7 @@ const HEADER_FILE = "gui.pak";
 
 // Arquivo de arvore por classe, conforme CSkillCustomizeGui::GenerateSkillItems.
 // O indice segue a ordem de ePC_CLASS, a mesma que o painel ja usa em CHARACTER_CLASSES.
-const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?: string }[] = [
+const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?: string; kind?: "skill" | "action" }[] = [
   { classIndex: 0, prefix: "hfi" }, { classIndex: 1, prefix: "hmy" }, { classIndex: 2, prefix: "hen" },
   { classIndex: 3, prefix: "nfi" }, { classIndex: 4, prefix: "nmy" }, { classIndex: 5, prefix: "mmi" },
   { classIndex: 6, prefix: "mwo" }, { classIndex: 7, prefix: "hsf" }, { classIndex: 8, prefix: "hsm" },
@@ -30,8 +31,14 @@ const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?
   { classIndex: 104, prefix: "mmi", suffix: "transform", label: "Transformações — Mighty Majin" },
   { classIndex: 105, prefix: "mwo", suffix: "transform", label: "Transformações — Wonder Majin" },
   // A arvore de acao e a unica realmente comum a todas as classes.
-  { classIndex: 110, prefix: "action", suffix: "skill", label: "Action (todas as classes)" },
+  { classIndex: 110, prefix: "action", suffix: "skill", label: "Ações do jogador (todas as classes)", kind: "action" },
+  // Arvore de transformacao generica. Existe no pack, tem uma unica skill colocada
+  // (21011 Super Saiyan) e nao estava alcancavel pelo painel.
+  { classIndex: 111, prefix: "transformation", suffix: "skill", label: "Transformações (genérica)" },
 ];
+
+/** Todo indice que CLASS_FILES define. A rota valida contra isto, nao contra um teto fixo. */
+export const KNOWN_CLASS_INDEXES = CLASS_FILES.map((entry) => entry.classIndex);
 
 export const packedPathForClass = (prefix: string, suffix = "skill") => `.\\gui\\skill\\${prefix}_${suffix}.scr`;
 
@@ -55,6 +62,7 @@ export async function listSkillLayoutClasses(directory = resolveClientPackDirect
     classIndex: entry.classIndex,
     prefix: entry.prefix.toUpperCase(),
     label: entry.label ?? null,
+    kind: entry.kind ?? "skill",
   }));
 }
 
@@ -70,17 +78,25 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
   const source = (await readPackFileContent(HEADER_FILE, packedPath, directory)).toString("latin1");
   const layout = parseSkillLayout(source);
 
-  // Dados de exibicao (nome e icone) vem do RDF do servidor, nao do .scr.
-  const catalog = await loadSkillCatalog();
-  const porTblidx = new Map(catalog.skills.map((skill) => [skill.tblidx, skill]));
+  // Dados de exibicao (nome e icone) vem do RDF do servidor, nao do .scr. QUAL rdf depende
+  // do tipo de bloco da arvore: a arvore de acoes guarda id de Table_Action_Data, nao TBLIDX
+  // de skill, e resolver um pelo outro traria o nome errado.
+  const isAction = (entry.kind ?? "skill") === "action";
+  const catalog = isAction ? null : await loadSkillCatalog();
+  const actionCatalog = isAction ? await loadActionCatalog() : null;
+  const porTblidx = new Map((catalog?.skills ?? []).map((skill) => [skill.tblidx, skill]));
   const usados = new Set(layout.cells.map((cell) => cell.tblidx).filter((tblidx): tblidx is number => tblidx !== null));
   // O .scr guarda somente as skills que ja foram colocadas na grade. Para permitir
   // adicionar uma skill recem-transferida de classe, tambem devolvemos as skills raiz
   // (grau 1) que o RDF declara para esta classe. Os graus seguintes pertencem a mesma
   // cadeia e sao alcancados por nextSkillId; nao ocupam celulas separadas no cliente.
-  const disponiveis = classIndex <= 20
-    ? catalog.skills.filter((skill) => skill.valid && skill.grade <= 1 && (skill.classFlag & (1 << classIndex)) !== 0)
-    : [];
+  // Na arvore de acoes, "disponiveis" sao todas as acoes validas da tabela -- nao ha classe
+  // para filtrar, que e justamente o que faz esta arvore valer para todo mundo.
+  const disponiveis = isAction
+    ? (actionCatalog?.actions ?? []).filter((action) => action.valid)
+    : classIndex <= 20
+      ? (catalog?.skills ?? []).filter((skill) => skill.valid && skill.grade <= 1 && (skill.classFlag & (1 << classIndex)) !== 0)
+      : [];
   const tblidxs = new Set([...usados, ...disponiveis.map((skill) => skill.tblidx)]);
 
   return {
@@ -92,6 +108,17 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
     cells: layout.cells.map((cell) => ({ column: cell.column, row: cell.row, kind: cell.kind, tblidx: cell.tblidx })),
     lines: layout.lines,
     skills: [...tblidxs].map((tblidx) => {
+      if (isAction) {
+        const action = actionCatalog?.byTblidx.get(tblidx);
+        return {
+          tblidx,
+          name: action?.name || `Ação ${tblidx}`,
+          internalName: action?.actionTypeLabel ?? "",
+          iconName: action?.iconName ?? "",
+          grade: 0,
+          nextSkillId: 0xffffffff,
+        };
+      }
       const skill = porTblidx.get(tblidx);
       return {
         tblidx,

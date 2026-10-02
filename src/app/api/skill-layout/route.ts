@@ -6,7 +6,7 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
 import { authorizeApiRequest } from "@/lib/security";
 import { getAdminSession } from "@/lib/session";
-import { listSkillLayoutClasses, loadSkillLayout, previewSkillLayout, publishSkillLayout } from "@/lib/skill-layout";
+import { KNOWN_CLASS_INDEXES, listSkillLayoutClasses, loadSkillLayout, previewSkillLayout, publishSkillLayout } from "@/lib/skill-layout";
 import { resolveRequestedPackDirectory } from "@/lib/skill-pack-publisher";
 
 export const runtime = "nodejs";
@@ -26,7 +26,7 @@ const lineSchema = z.object({
     .nullable(),
 });
 const publishSchema = z.object({
-  classIndex: z.number().int().min(0).max(110),
+  classIndex: z.number().int().refine((value) => KNOWN_CLASS_INDEXES.includes(value), "Classe sem árvore de skills."),
   placements: z.array(placementSchema).max(4096),
   lines: z.array(lineSchema).max(4096).default([]),
   clientPackDirectory: z.string().max(4096).nullish(),
@@ -42,7 +42,9 @@ export async function GET(request: Request) {
     if (raw === null) return NextResponse.json({ classes: await listSkillLayoutClasses() });
 
     const classIndex = Number(raw);
-    if (!Number.isInteger(classIndex) || classIndex < 0 || classIndex > 110) return NextResponse.json({ error: "Classe invÃ¡lida." }, { status: 400 });
+    // Antes o teto era 110 escrito à mão, e qualquer árvore nova acima disso era recusada
+    // mesmo estando listada. Agora a validação usa a própria lista de árvores conhecidas.
+    if (!Number.isInteger(classIndex) || !KNOWN_CLASS_INDEXES.includes(classIndex)) return NextResponse.json({ error: "Classe invÃ¡lida." }, { status: 400 });
     return NextResponse.json({ layout: await loadSkillLayout(classIndex) });
   } catch (error) {
     console.error("Falha ao carregar a Ã¡rvore de skills", error);

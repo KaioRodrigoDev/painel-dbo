@@ -388,6 +388,20 @@ export type MobDropsResponse = {
   sourceUpdatedAt: string;
 };
 
+/* ===================== Ações do jogador ===================== */
+
+export type ActionCatalogEntry = {
+  tblidx: number;
+  valid: boolean;
+  actionType: number;
+  actionTypeLabel: string;
+  nameTextId: number;
+  name: string;
+  iconName: string;
+  /** Índice em table_chat_command_data; é o comando de chat que dispara a ação. */
+  chatCommand: number;
+};
+
 /* ===================== Itens de aposta ===================== */
 
 export type GambleReward = {

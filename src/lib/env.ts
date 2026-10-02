@@ -46,6 +46,6 @@ export function getAdminConfig() {
       secureCookie:
         process.env.ADMIN_COOKIE_SECURE ??
         (process.env.NODE_ENV === "production" ? "true" : "false"),
-      maxCharacterLevel: process.env.MAX_CHARACTER_LEVEL ?? "70",
+      maxCharacterLevel: process.env.MAX_CHARACTER_LEVEL ?? "100",
     });
 }

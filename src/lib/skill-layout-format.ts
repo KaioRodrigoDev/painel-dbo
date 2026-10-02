@@ -99,7 +99,10 @@ export function parseSkillLayout(source: string): SkillLayout {
     const afterMarker = skillSection.indexOf("\n", marker.index) + 1;
     if (afterMarker <= 0) continue;
 
-    const block = /^(\/\/)?(skill|skillupgrade|skilloption|htb)[ \t@]*(\d*)/.exec(skillSection.slice(afterMarker, afterMarker + 60));
+    // `action` precisa estar aqui: a arvore de acoes (action_skill.scr) usa so essa palavra,
+    // e sem ela nenhuma celula casava -- a grade saia 0x0 e a arvore aparecia vazia. O lado
+    // da escrita ja conhecia o tipo (ACTIVE_CELL_KINDS), era so a leitura que ignorava.
+    const block = /^(\/\/)?(skill|skillupgrade|skilloption|htb|action)[ \t@]*(\d*)/.exec(skillSection.slice(afterMarker, afterMarker + 60));
     if (!block) continue;
 
     // O bloco vai ate a chave de fechamento, comentada ou nao.
