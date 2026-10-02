@@ -67,8 +67,9 @@ $panelTaskPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType Ser
 
 Register-ScheduledTask -TaskName $panelTaskName -Action $panelAction -Trigger $panelTrigger -Settings $panelSettings -Principal $panelTaskPrincipal -Description 'Painel administrativo Dbo World em 127.0.0.1:3000.' | Out-Null
 
-& (Join-Path $PSScriptRoot 'install-vip-task.ps1') -RunAsSystem -Force
+# O painel sobe antes da tarefa de VIP, para um erro nela nunca deixar o painel parado.
 Start-ScheduledTask -TaskName $panelTaskName
+& (Join-Path $PSScriptRoot 'install-vip-task.ps1') -RunAsSystem -Force
 
 Write-Host ''
 Write-Host 'Instalacao concluida.' -ForegroundColor Green

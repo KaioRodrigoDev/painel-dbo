@@ -6,10 +6,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $vipWorkspace = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $vipNode = (Get-Command node.exe -ErrorAction Stop).Source
-$vipTimeZone = (Get-TimeZone).Id
-if ($vipTimeZone -ne 'E. South America Standard Time') {
-  throw 'Configure o fuso do Windows para Sao Paulo antes de instalar a tarefa diaria.'
-}
+# A tarefa roda as 00h05 de Sao Paulo sem exigir que o servidor use esse fuso:
+# o horario e convertido para o fuso local. O vencimento em si compara datas em UTC.
+$vipSaoPaulo = [TimeZoneInfo]::FindSystemTimeZoneById('E. South America Standard Time')
+$vipSaoPauloTime = [DateTime]::SpecifyKind([DateTime]::Today.AddMinutes(5), 'Unspecified')
+$vipLocalTime = [TimeZoneInfo]::ConvertTime($vipSaoPauloTime, $vipSaoPaulo, [TimeZoneInfo]::Local)
 
 $vipTaskName = 'DboWorld-Admin-Vip-Expiry'
 $vipExisting = Get-ScheduledTask -TaskName $vipTaskName -ErrorAction SilentlyContinue
@@ -23,7 +24,7 @@ if ($vipExisting) {
 
 $vipArguments = '--env-file="' + (Join-Path $vipWorkspace '.env.local') + '" --experimental-strip-types "' + (Join-Path $vipWorkspace 'scripts\vip-job.mjs') + '"'
 $vipAction = New-ScheduledTaskAction -Execute $vipNode -Argument $vipArguments -WorkingDirectory $vipWorkspace
-$vipTrigger = New-ScheduledTaskTrigger -Daily -At '00:05'
+$vipTrigger = New-ScheduledTaskTrigger -Daily -At $vipLocalTime
 $vipSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5) -ExecutionTimeLimit (New-TimeSpan -Hours 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $vipPrincipal = if ($RunAsSystem) {
   New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

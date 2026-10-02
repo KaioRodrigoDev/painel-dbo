@@ -47,7 +47,7 @@ No Windows, instale a expiração diária às 00h05 no Agendador de Tarefas:
 powershell -ExecutionPolicy Bypass -File scripts\install-vip-task.ps1
 ```
 
-O instalador exige o fuso **E. South America Standard Time**, evita criar uma segunda tarefa com o mesmo nome e configura a execução atrasada após o computador voltar a ligar. A tarefa usa a conta atual e roda quando ela estiver conectada ao Windows, sem depender do navegador. Confira `DboWorld-Admin-Vip-Expiry` no Agendador e execute-a uma vez manualmente para validar as credenciais e o acesso ao banco.
+O instalador agenda a tarefa para as 00h05 de São Paulo convertidas para o fuso do servidor (não é preciso mudar o fuso do Windows), evita criar uma segunda tarefa com o mesmo nome e configura a execução atrasada após o computador voltar a ligar. A tarefa usa a conta atual e roda quando ela estiver conectada ao Windows, sem depender do navegador. Confira `DboWorld-Admin-Vip-Expiry` no Agendador e execute-a uma vez manualmente para validar as credenciais e o acesso ao banco.
 
 ```powershell
 npm run dev
