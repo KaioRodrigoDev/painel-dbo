@@ -647,14 +647,18 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
 .dropEditorSide { position: sticky; top: 12px; display: grid; gap: 12px; min-width: 0; }
 .dropEditorSide .itemDetailGrid { grid-template-columns: 1fr; margin: 0; }
 .dropEditorActions { display: flex; justify-content: flex-end; gap: 9px; flex-wrap: wrap; }
+/* `.secondaryButton` nasce com `width: 100%` para caber em coluna; aqui as ações ficam lado a
+   lado, e o botão esticado empurrava o outro para a linha de baixo. */
+.dropEditorActions .secondaryButton { width: auto; padding: 0 16px; }
 .dropScalarGrid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin: 0; }
 .dropCheckboxField { display: flex; align-items: center; gap: 8px; align-self: end; }
 .dropCheckboxField input { width: 16px; height: 16px; }
 .dropSlotsHeader { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 6px 0 9px; }
 .dropSlotsHeader strong { color: #fff; font-size: 12px; }
 .dropSlotsHeader span { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
-.dropSlotsHeader button { margin-left: auto; }
-.dropSlotList { display: grid; gap: 7px; margin-bottom: 16px; list-style: none; counter-reset: none; }
+.dropSlotsHeader button { width: auto; margin-left: auto; padding: 0 14px; }
+/* `<ol>` traz 40px de recuo por padrão, que desalinhava as linhas do cabeçalho da lista. */
+.dropSlotList { display: grid; gap: 7px; margin-bottom: 16px; padding-left: 0; list-style: none; counter-reset: none; }
 .dropSlotList li { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--sub-2); }
 .dropSlotIndex { display: grid; place-items: center; flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; color: var(--faint); background: rgba(255, 255, 255, 0.07); font-family: var(--font-mono); font-size: 9px; font-weight: 900; }
 .dropSlotBody { display: grid; gap: 5px; flex: 1 1 auto; min-width: 0; }
@@ -699,6 +703,20 @@ input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 111, 
 .mobSkillBasis { display: grid; gap: 3px; flex: 0 0 auto; width: 168px; }
 .mobSkillBasis span { color: var(--faint); font-size: 8px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
 .mobSkillList .dropSlotName small { color: var(--muted); font-family: var(--font-mono); font-size: 9px; font-weight: 400; }
+/* A linha de receita carrega o seletor de item mais um número, então o seletor pode ocupar
+   toda a largura que sobrar sem apertar a quantidade. */
+.recipeSlotList .dropSlotBody { flex: 1 1 320px; }
+.recipeItemPicker { margin-bottom: 18px; }
+.recipeItemPicker .dropSlotsHeader input { flex: 1 1 260px; }
+.recipeItemPicker .dropCheckboxField { flex: 0 0 auto; align-self: center; margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.recipeCandidateList { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; max-height: 260px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.recipeCandidateList button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid var(--line-soft); border-radius: 8px; color: #fff; background: var(--sub-2); font-size: 10px; text-align: left; }
+.recipeCandidateList button:hover:not(:disabled) { border-color: var(--accent); background: rgba(255, 111, 0, 0.14); }
+.recipeCandidateList button:disabled { opacity: 0.45; }
+.recipeCandidateList span { overflow: hidden; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
+.recipeCandidateList code { flex: 0 0 auto; color: var(--faint); font-family: var(--font-mono); font-size: 9px; }
+.recipeCandidateList em { flex: 0 0 auto; color: var(--faint); font-size: 8px; font-style: normal; text-transform: uppercase; }
+.recipeCandidateList .selected button { border-color: var(--accent); background: rgba(255, 111, 0, 0.2); }
 .dropPublishReview { display: grid; gap: 11px; margin-top: 18px; padding: 15px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--sub); }
 .dropPublishReview h3 { font-family: var(--font-display); font-size: 15px; }
 .dropPublishReview code { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 9px; }

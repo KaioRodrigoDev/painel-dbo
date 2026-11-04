@@ -388,6 +388,87 @@ export type MobDropsResponse = {
   sourceUpdatedAt: string;
 };
 
+/* ===================== Receitas (HoiPoi Mix) ===================== */
+
+export type RecipeResultValue = { tblidx: number; rate: number; flag: number };
+export type RecipeMaterialValue = { tblidx: number; quantity: number };
+
+export type RecipeValues = {
+  valid: boolean;
+  recipeType: number;
+  needMixLevel: number;
+  needMixZenny: number;
+  /** Até 3; o servidor lê sRECIPE_CREATE_DATA[3]. */
+  results: RecipeResultValue[];
+  /** Até 5; o servidor lê sRECIPE_MATERIAL_DATA[5]. */
+  materials: RecipeMaterialValue[];
+};
+
+type ResolvedRef = { name: string; iconName: string; missing: boolean };
+
+export type RecipeEntry = Omit<RecipeValues, "results" | "materials"> & {
+  tblidx: number;
+  name: string;
+  iconName: string;
+  nameTextId: number;
+  /** Existe um item do tipo Receita com este tblidx; sem ele ninguém aprende. */
+  hasRecipeItem: boolean;
+  results: (RecipeResultValue & ResolvedRef)[];
+  materials: (RecipeMaterialValue & ResolvedRef)[];
+};
+
+export type RecipeListResponse = {
+  recipes: RecipeEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  sourceFile: string;
+  sourceUpdatedAt: string;
+  /** `count` é quantas receitas usam o tipo; na tabela do jogo só 0 e 6 aparecem. */
+  recipeTypes: { value: number; label: string; count: number }[];
+  maxMaterials: number;
+  maxResults: number;
+};
+
+export type RecipeItemCandidate = {
+  tblidx: number;
+  name: string;
+  iconName: string;
+  nameTextId: number;
+  hasRecipe: boolean;
+};
+
+export type RecipeDraft = {
+  id: string;
+  status: "draft" | "published";
+  operation: "create" | "edit";
+  tblidx: number;
+  name: string;
+  nameTextId: number;
+  values: RecipeValues;
+  baseValues: RecipeValues | null;
+  changedFields: string[];
+  administrator: string;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  publicationBackup?: string;
+};
+
+export type RecipePublishPreview = {
+  draftId: string;
+  operation: "create" | "edit";
+  tblidx: number;
+  name: string;
+  rdfPath: string;
+  changes: DropPublishChange[];
+  warnings: string[];
+  blockingIssues: string[];
+  confirmationToken: string | null;
+};
+
 /* ===================== Ações do jogador ===================== */
 
 export type ActionCatalogEntry = {

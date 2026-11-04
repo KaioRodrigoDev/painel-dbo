@@ -51,6 +51,13 @@ type MobSkillAuditEntry = {
   details?: Record<string, unknown>;
 };
 
+type RecipeAuditEntry = {
+  administrator: string;
+  action: "recipes.draft_create" | "recipes.draft_edit" | "recipes.draft_discard" | "recipes.rdf_publish";
+  target: string;
+  details?: Record<string, unknown>;
+};
+
 type DropAuditEntry = {
   administrator: string;
   action: "drops.draft_edit" | "drops.draft_discard" | "drops.rdf_publish";
@@ -58,7 +65,7 @@ type DropAuditEntry = {
   details?: Record<string, unknown>;
 };
 
-type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry | DropAuditEntry | MobSkillAuditEntry;
+type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry | DropAuditEntry | MobSkillAuditEntry | RecipeAuditEntry;
 
 export async function writeAuditLog(entry: AuditEntry) {
   const auditDirectory = path.join(process.cwd(), "data");

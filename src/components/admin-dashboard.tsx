@@ -8,6 +8,7 @@ import { ItemCatalogPanel } from "@/components/item-catalog-panel";
 import { SkillCatalogPanel } from "@/components/skill-catalog-panel";
 import { SkillTreePanel } from "@/components/skill-tree-panel";
 import { MobCatalogPanel } from "@/components/mob-catalog-panel";
+import { RecipePanel } from "@/components/recipe-panel";
 import { PlayersOverview, VipBadge, VipEditor, vipDate, type VipAccount } from "@/components/vip-panel";
 import { AdminMailEditor, VipGroupMailEditor } from "@/components/admin-mail-editor";
 import { DeliveryHistoryPanel } from "@/components/delivery-history-panel";
@@ -49,7 +50,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [editing, setEditing] = useState<{ character: CharacterSummary; cash: number } | null>(null);
-  const [activeView, setActiveView] = useState<"overview" | "players" | "deliveries" | "items" | "skills" | "skillTree" | "mobs" | "servers">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "players" | "deliveries" | "items" | "skills" | "skillTree" | "mobs" | "recipes" | "servers">("overview");
   const [vipLevel, setVipLevel] = useState("all");
   const [vipState, setVipState] = useState("all");
   const [vipEditing, setVipEditing] = useState<{ account: VipAccount; renew: boolean } | null>(null);
@@ -126,6 +127,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
           <button className={activeView === "skills" ? "active" : ""} onClick={() => setActiveView("skills")}>Skills</button>
           <button className={activeView === "skillTree" ? "active" : ""} onClick={() => setActiveView("skillTree")}>Árvore de skills</button>
           <button className={activeView === "mobs" ? "active" : ""} onClick={() => setActiveView("mobs")}>Mobs</button>
+          <button className={activeView === "recipes" ? "active" : ""} onClick={() => setActiveView("recipes")}>Receitas</button>
           <button className={activeView === "servers" ? "active" : ""} onClick={() => setActiveView("servers")}>Servidores</button>
         </nav>
         <div className="adminIdentity">
@@ -173,6 +175,13 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
         {/* Os atributos de combate continuam só de leitura, mas drops e skills passaram a ser
             editáveis e publicáveis daqui -- dizer "somente leitura" aqui viraria promessa falsa. */}
         <div className="safetyCard"><span>◆</span><div><strong>Drops e skills editáveis</strong><small>Atributos de combate são só leitura; drops e skills publicam no RDF com backup</small></div></div>
+      </section> : activeView === "recipes" ? <section className="heroPanel">
+        <div>
+          <div className="eyebrow">HOIPOI MIX</div>
+          <h1>Receitas de fabricação</h1>
+          <p>Até 5 materiais e 3 resultados por receita, os mesmos limites que o jogo usa.</p>
+        </div>
+        <div className="safetyCard"><span>◆</span><div><strong>Edita com rascunho</strong><small>Criar ou mudar só vale depois de revisar e publicar; o RDF sai com backup</small></div></div>
       </section> : <section className="heroPanel">
         <div>
           <div className="eyebrow">INFRAESTRUTURA LOCAL</div>
@@ -278,7 +287,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
             <button disabled={page >= data.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Próxima →</button>
           </nav>
         )}
-      </section> : activeView === "deliveries" ? <section className="contentPanel"><DeliveryHistoryPanel /></section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
+      </section> : activeView === "deliveries" ? <section className="contentPanel"><DeliveryHistoryPanel /></section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : activeView === "recipes" ? <section className="contentPanel"><RecipePanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
 
       {vipEditing && <VipEditor account={vipEditing.account} renew={vipEditing.renew} expirySupported={data?.vipExpirySupported ?? true} onClose={() => setVipEditing(null)} onSaved={message => { setVipEditing(null); setActionMessage(message); setOverviewVersion(value => value + 1); if (activeView === "players") void loadAccounts(); }} />}
       {mailingAccount && <AdminMailEditor account={mailingAccount} onClose={() => setMailingAccount(null)} onSaved={message => { setMailingAccount(null); setActionMessage(message); }} />}
