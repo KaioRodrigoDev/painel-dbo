@@ -5,6 +5,32 @@ arquivos junto — você aponta para os seus.
 
 ---
 
+## Jeito rápido (recebeu o `painel-dbow.rar`)
+
+1. Instale o **Node.js 20 ou mais novo** (versão LTS) em https://nodejs.org, se ainda não tiver.
+2. Extraia o `.rar` **ao lado da pasta do cliente** — e do `DboServer`, se você tiver o servidor:
+
+   ```
+   C:\jogo\
+   ├── clientMDbo\          <- o seu cliente (qualquer nome; tem que ter pack\tbl.pak)
+   ├── DboServer\           <- opcional: catálogos, contas e banco vêm daqui
+   └── painel-dbow\         <- extraído do .rar
+   ```
+
+3. Dois cliques em **`Iniciar painel.bat`**. Na primeira vez ele:
+   - cria o `.env.local` com uma senha de acesso nova (aparece na janela) e, se achar o
+     `DboServer`, com os dados do banco do `QueryServer.ini`;
+   - instala as dependências e compila (precisa de internet, leva alguns minutos).
+4. O navegador abre sozinho no painel. Entre com `admin` e a senha mostrada na janela.
+   Deixe a janela aberta enquanto usa; fechar a janela desliga o painel.
+
+O painel acha o cliente e o servidor sozinho e reconhece a senha dos packs (DBO/DBOW,
+MDBO...). A janela mostra o que ele achou, nas linhas `[painel] cliente:` e
+`[painel] servidor:`. Se algo estiver em outro lugar, os passos abaixo explicam como
+apontar à mão.
+
+---
+
 ## O que você precisa antes de começar
 
 | | versão | como conferir |

@@ -57,7 +57,7 @@ export async function replacePackFiles(
 ): Promise<PackWriteResult> {
   if (!replacements.length) throw new Error("Nenhum arquivo para substituir.");
   const directory = options.directory ?? resolveClientPackDirectory();
-  const { headerPath, buffer: index } = await readRawPackIndex(headerFile, directory);
+  const { headerPath, password, buffer: index } = await readRawPackIndex(headerFile, directory);
   const records = scanIndexRecords(index);
 
   const porNome = new Map(records.map((record) => [record.name.toLowerCase(), record]));
@@ -105,7 +105,7 @@ export async function replacePackFiles(
 
     const indiceTemporary = `${headerPath}.admin-${randomUUID()}.tmp`;
     await backup(headerPath);
-    await writeFile(indiceTemporary, encryptPackHeader(novoIndice), { flag: "wx" });
+    await writeFile(indiceTemporary, encryptPackHeader(novoIndice, password), { flag: "wx" });
     temporarios.push({ temporary: indiceTemporary, final: headerPath });
 
     for (const { temporary, final } of temporarios) await rename(temporary, final);

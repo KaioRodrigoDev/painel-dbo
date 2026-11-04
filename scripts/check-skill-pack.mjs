@@ -4,7 +4,8 @@ import { createDecipheriv } from "node:crypto";
 import { open, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const PACK_PASSWORD = "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8";
+// Cliente com outra senha (MDBO etc.): CLIENT_PACK_PASSWORD. Lista e deteccao: src/lib/pack-format.ts.
+const PACK_PASSWORD = process.env.CLIENT_PACK_PASSWORD ?? "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8";
 const HEADER_RECORD_SIZE = 140;
 const HEADER_NAME_SIZE = 128;
 const RDF_HEADER_SIZE = 1;

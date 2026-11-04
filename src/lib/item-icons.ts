@@ -1,14 +1,10 @@
 import "server-only";
 
-import { createDecipheriv } from "node:crypto";
 import { open, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveClientPackDirectory } from "@/lib/game-paths";
-
-const PACK_PASSWORD = "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8";
-const HEADER_RECORD_SIZE = 140;
-const HEADER_NAME_SIZE = 128;
+import { decryptPackHeader, HEADER_NAME_SIZE, HEADER_RECORD_SIZE } from "@/lib/pack-format";
 
 type IconPackEntry = {
   unit: number;
@@ -28,21 +24,6 @@ let iconIndexCache: IconIndexCache | null = null;
 
 export function resolveItemIconPackDirectory() {
   return resolveClientPackDirectory();
-}
-
-function createPackKey() {
-  const key = Buffer.alloc(8);
-  const password = Buffer.from(PACK_PASSWORD, "ascii");
-  for (let index = 0; index < password.length; index += 1) {
-    key[index % key.length] ^= password[index];
-  }
-  return Buffer.concat([key, key, key]);
-}
-
-function decryptHeader(encrypted: Buffer) {
-  const decipher = createDecipheriv("des-ede3", createPackKey(), null);
-  decipher.setAutoPadding(false);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
 }
 
 function safeIconFileName(value: string) {
@@ -66,7 +47,7 @@ async function loadIconIndex() {
   }
 
   const encrypted = await readFile(/* turbopackIgnore: true */ headerPath);
-  const header = decryptHeader(encrypted);
+  const header = decryptPackHeader(encrypted);
   const entries = new Map<string, IconPackEntry>();
 
   for (let offset = 0; offset + HEADER_RECORD_SIZE <= header.length; offset += HEADER_RECORD_SIZE) {

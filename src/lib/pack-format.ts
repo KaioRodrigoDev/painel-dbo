@@ -3,7 +3,19 @@
 // direto por scripts/check-pack-rebuild.ts sem depender do runtime do Next.
 import { createCipheriv, createDecipheriv } from "node:crypto";
 
-const PACK_PASSWORD = "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8";
+/**
+ * Senhas de pack conhecidas: o NTL_PACK_CRYPT_KEY de NtlPLResourcePack.cpp/.h de cada
+ * cliente. Cada cliente usa uma so, e o indice nao diz qual -- por isso a senha e
+ * descoberta tentando cada uma (ver detectPackPassword). Um cliente com senha fora desta
+ * lista funciona com CLIENT_PACK_PASSWORD no .env.local.
+ */
+export const KNOWN_PACK_PASSWORDS = [
+  { label: "DBO/DBOW", password: "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8" },
+  { label: "MDBO", password: "FFCF4403F048FFC683C30883FB1072E1SDFDF4D" },
+  // Alternativas que aparecem comentadas no fonte do cliente.
+  { label: "KKH7", password: "KKH7JSDFSD077VXCVDF789SDFWE567PPAE45VF5" },
+  { label: "jhssugi", password: "jhssugi" },
+] as const;
 
 export const HEADER_RECORD_SIZE = 140;
 export const HEADER_NAME_SIZE = 128;
@@ -19,23 +31,96 @@ export type IndexRecord = {
   offset: number;
 };
 
-function createPackKey() {
+function createPackKey(packPassword: string) {
   const key = Buffer.alloc(8);
-  const password = Buffer.from(PACK_PASSWORD, "ascii");
+  const password = Buffer.from(packPassword, "ascii");
   for (let index = 0; index < password.length; index += 1) key[index % key.length] ^= password[index];
   return Buffer.concat([key, key, key]);
 }
 
-export function decryptPackHeader(encrypted: Buffer) {
-  const decipher = createDecipheriv("des-ede3", createPackKey(), null);
+function desDecrypt(encrypted: Buffer, password: string) {
+  const decipher = createDecipheriv("des-ede3", createPackKey(password), null);
   decipher.setAutoPadding(false);
   return Buffer.concat([decipher.update(encrypted), decipher.final()]);
 }
 
-/** Inversa de decryptPackHeader. Exige tamanho múltiplo de 8 (bloco do DES). */
-export function encryptPackHeader(plain: Buffer) {
+/** Senhas a tentar, na ordem: a do .env.local primeiro, depois as conhecidas. */
+function candidatePasswords() {
+  const configured = process.env.CLIENT_PACK_PASSWORD?.trim();
+  const known: string[] = KNOWN_PACK_PASSWORDS.map((entry) => entry.password);
+  return configured ? [configured, ...known.filter((password) => password !== configured)] : known;
+}
+
+/** Registros usados para reconhecer a senha certa: 4 x 140 = 560 bytes, multiplo de 8. */
+const DETECTION_RECORDS = 4;
+
+/**
+ * Com a senha errada o DES nao falha: devolve lixo. O lixo quase nunca tem cara de
+ * registro -- nome terminado em zero dentro dos 128 bytes, sem bytes de controle e com
+ * barra de caminho (".\texture\..."). Registro de nome vazio e ignorado.
+ */
+function looksLikePackIndex(plain: Buffer) {
+  let named = 0;
+  for (let recordOffset = 0; recordOffset + HEADER_RECORD_SIZE <= plain.length; recordOffset += HEADER_RECORD_SIZE) {
+    const nameStart = recordOffset + HEADER_FIELD.name;
+    if (plain[nameStart] === 0) continue;
+    const nameEnd = plain.indexOf(0, nameStart);
+    if (nameEnd < 0 || nameEnd > nameStart + HEADER_NAME_SIZE) return false;
+    const name = plain.subarray(nameStart, nameEnd);
+    if (name.some((byte) => byte < 0x20) || !name.includes(0x5c)) return false;
+    named += 1;
+  }
+  return named > 0;
+}
+
+/**
+ * Descobre com que senha o indice foi cifrado. Indice pequeno demais para ter um registro
+ * usa a configurada (ou a padrao). Nenhuma senha serviu: erro claro, em vez de devolver
+ * um indice de lixo que parece vazio.
+ */
+export function detectPackPassword(encrypted: Buffer) {
+  const candidates = candidatePasswords();
+  const sample = encrypted.subarray(0, Math.min(encrypted.length & ~7, DETECTION_RECORDS * HEADER_RECORD_SIZE));
+  if (sample.length < HEADER_RECORD_SIZE) return candidates[0]!;
+  const password = candidates.find((candidate) => looksLikePackIndex(desDecrypt(sample, candidate)));
+  if (!password) {
+    throw new Error(
+      "Não foi possível decifrar o índice do pack com nenhuma senha conhecida. Este cliente usa outra senha: " +
+        "coloque-a em CLIENT_PACK_PASSWORD no .env.local (é o NTL_PACK_CRYPT_KEY do fonte do cliente).",
+    );
+  }
+  return password;
+}
+
+/** Nome curto da senha, para log: "MDBO", "DBO/DBOW" ou "CLIENT_PACK_PASSWORD". */
+export function describePackPassword(password: string) {
+  return KNOWN_PACK_PASSWORDS.find((entry) => entry.password === password)?.label ?? "CLIENT_PACK_PASSWORD";
+}
+
+// Senhas com que algum indice foi decifrado neste processo, para encryptPackHeader saber
+// regravar com a mesma quando ninguem a informa.
+const passwordsRead = new Set<string>();
+
+/** Decifra o indice. Sem `password`, a senha e descoberta (detectPackPassword). */
+export function decryptPackHeader(encrypted: Buffer, password = detectPackPassword(encrypted)) {
+  passwordsRead.add(password);
+  return desDecrypt(encrypted, password);
+}
+
+/**
+ * Inversa de decryptPackHeader. Exige tamanho múltiplo de 8 (bloco do DES).
+ *
+ * Regravar com outra senha deixa o cliente sem conseguir ler o pack, entao sem `password`
+ * vale a senha com que os indices deste processo foram lidos -- e, se foram lidos com
+ * senhas diferentes, ela tem que ser informada.
+ */
+export function encryptPackHeader(plain: Buffer, password?: string) {
   if (plain.length % 8 !== 0) throw new Error("O índice do pack precisa ser múltiplo de 8 bytes para ser cifrado.");
-  const cipher = createCipheriv("des-ede3", createPackKey(), null);
+  if (!password && passwordsRead.size > 1) {
+    throw new Error("Índices com senhas diferentes foram lidos neste processo; informe a senha ao regravar.");
+  }
+  const key = password ?? [...passwordsRead][0] ?? candidatePasswords()[0]!;
+  const cipher = createCipheriv("des-ede3", createPackKey(key), null);
   cipher.setAutoPadding(false);
   return Buffer.concat([cipher.update(plain), cipher.final()]);
 }

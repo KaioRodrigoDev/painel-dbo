@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import { findClientPackNextToPanel, findExecutionEnvNextToPanel } from "@/lib/game-folders.mjs";
+
 /**
  * Onde o painel encontra os arquivos do jogo.
  *
@@ -15,7 +17,10 @@ import path from "node:path";
  *
  *   1. a variavel daquele arquivo (ex.: SKILL_TABLE_PATH)  -- ajuste pontual
  *   2. DBOW_GAME_ROOT                                      -- instalacao fora do repo
- *   3. o caminho relativo historico                        -- painel dentro do dbow/
+ *   3. o que estiver ao lado do painel (game-folders.mjs)  -- pasta do cliente com
+ *      qualquer nome, ou o arranjo historico dentro do dbow/
+ *   4. o caminho relativo historico, mesmo sem existir     -- para a mensagem de erro
+ *                                                             mostrar onde ele procurou
  *
  * Manter (1) acima de (2) importa: quem tem a tabela de skill num lugar fora do padrao
  * continua conseguindo apontar so ela, sem abrir mao da raiz para o resto.
@@ -33,7 +38,7 @@ export function resolveExecutionEnv() {
     return path.resolve(process.env.DBOW_GAME_ROOT, "DboServer", "ExecutionEnv");
   }
 
-  return path.resolve(process.cwd(), "..", "DboServer", "ExecutionEnv");
+  return findExecutionEnvNextToPanel() ?? path.resolve(process.cwd(), "..", "DboServer", "ExecutionEnv");
 }
 
 /**
@@ -45,7 +50,7 @@ export function resolveServerTable(nomeDoArquivo: string, variavelDeAjuste?: str
   const ajuste = variavelDeAjuste ? process.env[variavelDeAjuste] : undefined;
   if (ajuste) return path.resolve(ajuste);
 
-  return path.join(resolveExecutionEnv(), ...SUBPASTA_TABELAS, nomeDoArquivo);
+  return path.join(/* turbopackIgnore: true */ resolveExecutionEnv(), ...SUBPASTA_TABELAS, nomeDoArquivo);
 }
 
 /** Pasta `pack` do cliente, onde ficam tbl.pak, gui.pak, tex.pak e as unidades. */
@@ -64,5 +69,5 @@ export function resolveClientPackDirectory() {
     return path.resolve(process.env.DBOW_GAME_ROOT, "ClientRuntime_RealBase", "pack");
   }
 
-  return path.resolve(process.cwd(), "..", "ClientRuntime_RealBase", "pack");
+  return findClientPackNextToPanel() ?? path.resolve(process.cwd(), "..", "ClientRuntime_RealBase", "pack");
 }

@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveClientPackDirectory } from "@/lib/game-paths";
-import { decryptPackHeader, scanIndexRecords } from "@/lib/pack-format";
+import { decryptPackHeader, detectPackPassword, scanIndexRecords } from "@/lib/pack-format";
 
 export { decryptPackHeader, encryptPackHeader, HEADER_FIELD, HEADER_NAME_SIZE, HEADER_RECORD_SIZE, scanIndexRecords } from "@/lib/pack-format";
 export type { IndexRecord } from "@/lib/pack-format";
@@ -39,10 +39,15 @@ export function packDataFileName(headerFile: string, unit: number) {
   return `${path.basename(headerFile, ".pak")}${unit}.pak`;
 }
 
-/** Índice decifrado cru, para edições que precisam preservar bytes desconhecidos. */
+/**
+ * Índice decifrado cru, para edições que precisam preservar bytes desconhecidos. Devolve
+ * também a senha com que ele foi lido: o índice tem que ser regravado com ela.
+ */
 export async function readRawPackIndex(headerFile: string, directory = resolveClientPackDirectory()) {
   const headerPath = path.join(directory, headerFile);
-  return { headerPath, buffer: decryptPackHeader(await readFile(/* turbopackIgnore: true */ headerPath)) };
+  const encrypted = await readFile(/* turbopackIgnore: true */ headerPath);
+  const password = detectPackPassword(encrypted);
+  return { headerPath, password, buffer: decryptPackHeader(encrypted, password) };
 }
 
 /**

@@ -4,7 +4,8 @@ import { createCipheriv, createDecipheriv } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const PACK_PASSWORD = "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8";
+// Cliente com outra senha (MDBO etc.): CLIENT_PACK_PASSWORD. Lista e deteccao: src/lib/pack-format.ts.
+const PACK_PASSWORD = process.env.CLIENT_PACK_PASSWORD ?? "NZYGLTAJF69IS2ARV6RPMC55PELLH8UYNJ39RY8";
 const directory =
   process.env.CLIENT_PACK_DIRECTORY ??
   process.env.ITEM_ICON_PACK_DIRECTORY ??
