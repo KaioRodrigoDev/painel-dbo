@@ -2,7 +2,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import { ensureAdminSchema, getAccountPool, getCharacterPool } from "@/lib/db";
+import { ensureAdminSchema, getAccountPool, getCharacterPool, QUEUE_DISABLED_MESSAGE } from "@/lib/db";
+import { getGameQueues } from "@/lib/env";
 import { loadCashShopItemMappings, loadItemCatalog } from "@/lib/item-catalog";
 import { hasVipExpiryColumn } from "@/lib/vip-schema";
 import { describeMailPackage, getMailPackage } from "@/lib/mail-packages";
@@ -11,6 +12,12 @@ export type AdminMailRequest = { requestKey: string; accountId: number; itemTbli
 
 export class AdminMailError extends Error {
   constructor(message: string, public status = 400) { super(message); }
+}
+
+// O QueryServer do MDBO ainda não entrega estas filas; sem a trava o envio ficaria pendente para sempre.
+function requireQueue(queue: "mail" | "cashshop") {
+  const queues = getGameQueues();
+  if (queue === "mail" ? !queues.mail : !queues.cashShop) throw new AdminMailError(QUEUE_DISABLED_MESSAGE[queue], 409);
 }
 
 async function resolveCashShopItem(itemTblidx: number, quantity: number) {
@@ -29,12 +36,13 @@ const activeVipSql = (expirySupported: boolean) => expirySupported
   : "vip=?";
 
 export async function requestAdminMail(input: AdminMailRequest, administrator: string) {
+  requireQueue("cashshop");
   await ensureAdminSchema();
   const pool = getAccountPool();
   const [{ item, mapping }, [accounts]] = await Promise.all([
     resolveCashShopItem(input.itemTblidx, input.quantity),
     pool.execute<(RowDataPacket & { Username: string })[]>(
-      "SELECT Username FROM accounts WHERE AccountID=? LIMIT 1", [input.accountId]),
+      "SELECT username AS Username FROM accounts WHERE id=? LIMIT 1", [input.accountId]),
   ]);
   const account = accounts[0];
   if (!account) throw new AdminMailError("Conta não encontrada.", 404);
@@ -70,6 +78,7 @@ export async function previewVipMailGroup(level: number) {
 }
 
 export async function requestVipGroupMail(input: { batchKey: string; vipLevel: number; itemTblidx: number; quantity: number }, administrator: string) {
+  requireQueue("cashshop");
   await ensureAdminSchema();
   const pool = getAccountPool();
   const expirySupported = await hasVipExpiryColumn(pool);
@@ -86,7 +95,7 @@ export async function requestVipGroupMail(input: { batchKey: string; vipLevel: n
       return { batchId: existing[0].Id, recipients: existing[0].RecipientCount, skipped: 0, duplicate: true };
     }
     const [accounts] = await connection.execute<(RowDataPacket & { AccountID: number })[]>(
-      `SELECT AccountID FROM accounts WHERE ${activeVipSql(expirySupported)} FOR UPDATE`, [input.vipLevel]);
+      `SELECT id AS AccountID FROM accounts WHERE ${activeVipSql(expirySupported)} FOR UPDATE`, [input.vipLevel]);
     if (accounts.length === 0) throw new AdminMailError("Nenhuma conta elegível neste grupo VIP.", 409);
     const [batch] = await connection.execute<ResultSetHeader>(`INSERT INTO admin_cashshop_batches
       (BatchKey,VipLevel,ItemTblidx,HLSitemTblidx,ItemName,StackCount,RequestedBy,RecipientCount)
@@ -113,6 +122,7 @@ async function resolveMailItem(itemTblidx: number, quantity: number) {
 }
 
 export async function requestCharacterMail(input: AdminMailRequest & { charId: number; message: string }, administrator: string) {
+  requireQueue("mail");
   await ensureAdminSchema();
   const item = await resolveMailItem(input.itemTblidx, input.quantity);
   const pool = getCharacterPool();
@@ -120,7 +130,7 @@ export async function requestCharacterMail(input: AdminMailRequest & { charId: n
   try {
     await connection.beginTransaction();
     const [character] = await connection.execute<(RowDataPacket & { CharName: string })[]>(
-      "SELECT CharName FROM characters WHERE AccountID=? AND CharID=? LIMIT 1", [input.accountId, input.charId]);
+      "SELECT char_name AS CharName FROM characters WHERE account_id=? AND id=? LIMIT 1", [input.accountId, input.charId]);
     if (!character[0]) throw new AdminMailError("Personagem não pertence a esta conta.", 404);
     const [existing] = await connection.execute<(RowDataPacket & { Id: number; Status: string; AccountID: number; CharID: number; ItemTblidx: number; StackCount: number; Message: string; SealItem: number })[]>(
       "SELECT Id,Status,AccountID,CharID,ItemTblidx,StackCount,Message,SealItem FROM admin_mail_items WHERE RequestKey=? FOR UPDATE", [input.requestKey]);
@@ -131,7 +141,7 @@ export async function requestCharacterMail(input: AdminMailRequest & { charId: n
       return { id: existing[0].Id, status: existing[0].Status, duplicate: true };
     }
     const [mailCount] = await connection.execute<(RowDataPacket & { total: number })[]>(
-      "SELECT COUNT(*) total FROM mail WHERE CharID=?", [input.charId]);
+      "SELECT COUNT(*) total FROM mail WHERE char_id=?", [input.charId]);
     if (Number(mailCount[0]?.total ?? 0) >= 30) throw new AdminMailError("A caixa de correio está cheia (30 mensagens).", 409);
     const [result] = await connection.execute<ResultSetHeader>(`INSERT INTO admin_mail_items
       (RequestKey,AccountID,CharID,ItemTblidx,ItemName,StackCount,ItemRank,Durability,
@@ -150,19 +160,20 @@ export async function requestCharacterMail(input: AdminMailRequest & { charId: n
 }
 
 export async function listVipMailRecipients(level: number) {
+  requireQueue("mail");
   await ensureAdminSchema();
   const accountPool = getAccountPool();
   const expirySupported = await hasVipExpiryColumn(accountPool);
   const [accounts] = await accountPool.execute<(RowDataPacket & { AccountID: number; Username: string })[]>(
-    `SELECT AccountID,Username FROM accounts WHERE ${activeVipSql(expirySupported)} ORDER BY Username`, [level]);
+    `SELECT id AS AccountID,username AS Username FROM accounts WHERE ${activeVipSql(expirySupported)} ORDER BY username`, [level]);
   if (!accounts.length) return [];
   const ids = accounts.map(account => account.AccountID);
   const [characters] = await getCharacterPool().query<(RowDataPacket & { AccountID: number; CharID: number; CharName: string; Level: number; PreferredCharID: number | null; MailCount: number; QueuedCount: number })[]>(`
-    SELECT c.AccountID,c.CharID,c.CharName,c.Level,p.CharID PreferredCharID,
-      (SELECT COUNT(*) FROM mail m WHERE m.CharID=c.CharID) MailCount,
-      (SELECT COUNT(*) FROM admin_mail_items q WHERE q.CharID=c.CharID AND q.Status IN ('pending','processing')) QueuedCount
-    FROM characters c LEFT JOIN admin_mail_recipient_preferences p ON p.AccountID=c.AccountID
-    WHERE c.AccountID IN (?) ORDER BY c.AccountID,c.CharID`, [ids]);
+    SELECT c.account_id AS AccountID,c.id AS CharID,c.char_name AS CharName,c.level AS Level,p.CharID PreferredCharID,
+      (SELECT COUNT(*) FROM mail m WHERE m.char_id=c.id) MailCount,
+      (SELECT COUNT(*) FROM admin_mail_items q WHERE q.CharID=c.id AND q.Status IN ('pending','processing')) QueuedCount
+    FROM characters c LEFT JOIN admin_mail_recipient_preferences p ON p.AccountID=c.account_id
+    WHERE c.account_id IN (?) ORDER BY c.account_id,c.id`, [ids]);
   return accounts.map(account => {
     const choices = characters.filter(character => character.AccountID === account.AccountID);
     const slots = (character: typeof choices[number]) => Math.max(0, 30 - Number(character.MailCount) - Number(character.QueuedCount));
@@ -178,6 +189,7 @@ export async function requestVipGroupCharacterMail(input: {
   batchKey: string; vipLevel: number; itemTblidx: number; quantity: number; message: string; sealItem?: boolean;
   recipients: { accountId: number; charId: number }[];
 }, administrator: string) {
+  requireQueue("mail");
   await ensureAdminSchema();
   const item = await resolveMailItem(input.itemTblidx, input.quantity);
   const eligible = await listVipMailRecipients(input.vipLevel);
@@ -227,6 +239,7 @@ export async function requestMailPackage(input: {
   accountId?: number; charId?: number; vipLevel?: number;
   recipients?: { accountId: number; charId: number }[];
 }, administrator: string) {
+  requireQueue("mail");
   await ensureAdminSchema();
   const pkg = await getMailPackage(input.packageId);
   if (!pkg) throw new AdminMailError("Pacote não encontrado no servidor.", 404);
@@ -261,10 +274,10 @@ export async function requestMailPackage(input: {
       if (seen.has(recipient.accountId)) throw new AdminMailError("Conta repetida na lista de destinatários.", 409);
       seen.add(recipient.accountId);
       const [characters] = await connection.execute<(RowDataPacket & { CharName: string })[]>(
-        "SELECT CharName FROM characters WHERE AccountID=? AND CharID=? LIMIT 1 FOR UPDATE", [recipient.accountId, recipient.charId]);
+        "SELECT char_name AS CharName FROM characters WHERE account_id=? AND id=? LIMIT 1 FOR UPDATE", [recipient.accountId, recipient.charId]);
       if (!characters[0]) throw new AdminMailError(`Personagem não pertence à conta #${recipient.accountId}.`, 409);
       const [counts] = await connection.execute<(RowDataPacket & { mailCount: number; queuedCount: number })[]>(`
-        SELECT (SELECT COUNT(*) FROM mail WHERE CharID=?) mailCount,
+        SELECT (SELECT COUNT(*) FROM mail WHERE char_id=?) mailCount,
           (SELECT COUNT(*) FROM admin_mail_items WHERE CharID=? AND Status IN ('pending','processing')) queuedCount`,
         [recipient.charId, recipient.charId]);
       if (Number(counts[0]?.mailCount ?? 0) + Number(counts[0]?.queuedCount ?? 0) + items.length > 30)

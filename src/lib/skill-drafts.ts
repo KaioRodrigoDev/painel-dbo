@@ -9,6 +9,7 @@ import { loadSkillCatalog } from "@/lib/skill-catalog";
 import type { SkillDraft, SkillDraftValue } from "@/lib/types";
 
 const DRAFT_DIRECTORY = path.join(process.cwd(), "data", "skill-drafts");
+const DISCARDED_DIRECTORY = path.join(DRAFT_DIRECTORY, "descartados");
 const LIST_LENGTHS: Record<string, number> = { effectIds: 2, effectTypes: 2, effectValues: 2, rpEffects: 6, rpEffectValues: 6, prerequisiteSkillIds: 4 };
 
 export type CreateSkillDraftInput = {
@@ -107,18 +108,40 @@ export async function createSkillDraft(input: CreateSkillDraftInput, administrat
   const baseValues = getSkillCreationBaseValues(baseSkill);
   const changedFields = getFieldsForSkillClass(input.skillClass).map((field) => field.id).filter((id) => !sameValue(input.values[id], baseValues[id]));
   if (operation === "edit" && changedFields.length === 0) throw new Error("Altere pelo menos um campo antes de salvar a edição.");
+
+  // Uma edição pendente por skill. O editor abre a partir dela, então salvar de novo
+  // atualiza o mesmo rascunho em vez de espalhar versões que só têm parte das mudanças.
+  // Versões antigas que já existiam vão para "descartados", de onde dá para recuperar.
+  const pendentes = operation === "edit"
+    ? existingDrafts.filter((draft) => draft.status === "draft" && draft.operation === "edit" && draft.newTblidx === input.newTblidx)
+    : [];
+  const anterior = pendentes[0];
+
   const now = new Date().toISOString();
   const draft: SkillDraft = {
-    id: randomUUID(), status: "draft", operation, skillClass: input.skillClass, characterClass: input.characterClass, profile: profile.label,
+    id: anterior?.id ?? randomUUID(), status: "draft", operation, skillClass: input.skillClass, characterClass: input.characterClass, profile: profile.label,
     baseTblidx: baseSkill.tblidx, baseName: baseSkill.name, newTblidx: input.newTblidx,
     name: input.name.trim(), values: input.values, changedFields, administrator,
-    createdAt: now, updatedAt: now,
+    createdAt: anterior?.createdAt ?? now, updatedAt: now,
   };
 
   await mkdir(DRAFT_DIRECTORY, { recursive: true });
   const target = path.join(DRAFT_DIRECTORY, `${draft.id}.json`);
-  const temporary = `${target}.tmp`;
+  const temporary = `${target}.${randomUUID()}.tmp`;
   await writeFile(temporary, `${JSON.stringify(draft, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
   await rename(temporary, target);
+  if (pendentes.length > 1) await discardSkillDrafts(pendentes.slice(1).map((entry) => entry.id));
   return draft;
+}
+
+/**
+ * Tira rascunhos da fila movendo-os para "descartados". Não apaga: o JSON continua lá
+ * para consulta ou para voltar à pasta principal se tiver sido engano.
+ */
+export async function discardSkillDrafts(draftIds: string[]) {
+  await mkdir(DISCARDED_DIRECTORY, { recursive: true });
+  for (const draftId of draftIds) {
+    if (!/^[a-f0-9-]{36}$/i.test(draftId)) throw new Error("Identificador de rascunho inválido.");
+    await rename(path.join(DRAFT_DIRECTORY, `${draftId}.json`), path.join(DISCARDED_DIRECTORY, `${draftId}.json`));
+  }
 }

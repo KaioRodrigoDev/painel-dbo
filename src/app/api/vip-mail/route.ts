@@ -22,7 +22,10 @@ export async function GET(request: Request) {
     if (new URL(request.url).searchParams.get("channel") === "mail") return Response.json({ recipients: await listVipMailRecipients(parsed.data) });
     return Response.json(await previewVipMailGroup(parsed.data));
   }
-  catch (error) { console.error("Falha ao contar grupo VIP", error); return Response.json({ error: "Não foi possível contar os destinatários." }, { status: 503 }); }
+  catch (error) {
+    if (error instanceof AdminMailError) return Response.json({ error: error.message }, { status: error.status });
+    console.error("Falha ao contar grupo VIP", error); return Response.json({ error: "Não foi possível contar os destinatários." }, { status: 503 });
+  }
 }
 
 export async function POST(request: Request) {

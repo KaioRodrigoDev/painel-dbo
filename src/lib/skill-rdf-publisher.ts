@@ -18,7 +18,7 @@ import {
   type SkillPackWriteResult,
 } from "@/lib/skill-pack-publisher";
 import { constantTimeEqual } from "@/lib/security";
-import type { SkillDraft, SkillDraftValue, SkillPublishChange, SkillPublishPreview } from "@/lib/types";
+import type { SkillCatalogEntry, SkillDraft, SkillDraftValue, SkillPublishChange, SkillPublishPreview } from "@/lib/types";
 
 type FieldWriter = (buffer: Buffer, recordOffset: number, value: SkillDraftValue) => void;
 
@@ -104,6 +104,21 @@ function createConfirmationToken(draft: SkillDraft, rdfHash: string, changes: Sk
   return createHash("sha256").update(JSON.stringify({ draftId: draft.id, updatedAt: draft.updatedAt, rdfHash, changes })).digest("hex");
 }
 
+/** Aplica as mudanças de um rascunho no registro já localizado (RDF ou tabela do pack). */
+export function applySkillChanges(buffer: Buffer, recordOffset: number, changes: SkillPublishChange[]) {
+  for (const change of changes) FIELD_WRITERS[change.id as SkillCreationFieldId]!(buffer, recordOffset, change.after);
+}
+
+/** Uma publicação por vez, seja de um rascunho ou de um lote inteiro. */
+export async function withSkillPublicationLock<T>(task: () => Promise<T>) {
+  if (publicationInProgress) throw new Error("Outra publicação de skill está em andamento.");
+  publicationInProgress = true;
+  try { return await task(); }
+  finally { publicationInProgress = false; }
+}
+
+export { findRecordOffset as findSkillRecordOffset };
+
 function findRecordOffset(buffer: Buffer, tblidx: number) {
   if (buffer.length <= SKILL_RDF_HEADER_SIZE || (buffer.length - SKILL_RDF_HEADER_SIZE) % SKILL_RDF_RECORD_SIZE !== 0) throw new Error("O formato atual do Table_Skill_Data.rdf é incompatível.");
   let found = -1;
@@ -141,6 +156,21 @@ async function publicationContext(draftId: string) {
   const catalog = await loadSkillCatalog();
   const currentSkill = catalog.skills.find((skill) => skill.tblidx === draft.newTblidx);
   if (!currentSkill) throw new Error("A skill não foi encontrada no catálogo atual.");
+  const { changes, blockingIssues, effectiveValues } = analyzeSkillDraft(draft, currentSkill);
+  const warnings = [
+    "A publicação grava no Table_Skill_Data.rdf do servidor e na cópia que o cliente lê de dentro do pack.",
+    "O GameServer precisa ser reiniciado depois da publicação para recarregar a tabela.",
+    "Os jogadores só passam a ver a mudança depois de baixar o pack atualizado e substituí-lo na pasta pack do cliente.",
+  ];
+  const confirmationToken = blockingIssues.length ? null : createConfirmationToken(draft, rdfHash, changes);
+  return { draft, rdfPath, rdfBuffer, rdfHash, changes, warnings, blockingIssues, confirmationToken, effectiveValues };
+}
+
+/**
+ * Compara um rascunho de edição com a skill como ela está agora no RDF. É a mesma regra
+ * para publicar um rascunho sozinho e para montar um lote com vários.
+ */
+export function analyzeSkillDraft(draft: SkillDraft, currentSkill: SkillCatalogEntry) {
   const currentValues = getSkillCreationBaseValues(currentSkill);
   const changes: SkillPublishChange[] = [];
   const blockingIssues: string[] = [];
@@ -165,13 +195,7 @@ async function publicationContext(draftId: string) {
   if (!changes.length) blockingIssues.push("O RDF atual já possui todos os valores deste rascunho.");
   const effectiveValues = { ...currentValues, ...Object.fromEntries(changes.map((change) => [change.id, change.after])) };
   blockingIssues.push(...validateEffectiveValues(effectiveValues, changes.map((change) => change.id)));
-  const warnings = [
-    "A publicação grava no Table_Skill_Data.rdf do servidor e na cópia que o cliente lê de dentro do pack.",
-    "O GameServer precisa ser reiniciado depois da publicação para recarregar a tabela.",
-    "Os jogadores só passam a ver a mudança depois de baixar o pack atualizado e substituí-lo na pasta pack do cliente.",
-  ];
-  const confirmationToken = blockingIssues.length ? null : createConfirmationToken(draft, rdfHash, changes);
-  return { draft, rdfPath, rdfBuffer, rdfHash, changes, warnings, blockingIssues, confirmationToken, effectiveValues };
+  return { changes, blockingIssues, effectiveValues };
 }
 
 export async function getSkillPublishPreview(draftId: string): Promise<SkillPublishPreview> {
@@ -189,9 +213,7 @@ export type SkillPublishOptions = {
 };
 
 export async function publishSkillDraft(draftId: string, confirmationToken: string, administrator: string, options: SkillPublishOptions) {
-  if (publicationInProgress) throw new Error("Outra publicação de skill está em andamento.");
-  publicationInProgress = true;
-  try {
+  return withSkillPublicationLock(async () => {
     const context = await publicationContext(draftId);
     if (context.blockingIssues.length || !context.confirmationToken) throw new Error(context.blockingIssues.join(" ") || "O rascunho não pode ser publicado.");
     if (!constantTimeEqual(confirmationToken, context.confirmationToken)) throw new Error("A confirmação expirou porque o rascunho ou o RDF mudou. Valide novamente.");
@@ -201,7 +223,7 @@ export async function publishSkillDraft(draftId: string, confirmationToken: stri
     if (!constantTimeEqual(confirmationToken, latestToken)) throw new Error("O RDF mudou após a validação. Valide novamente antes de publicar.");
     const recordOffset = findRecordOffset(latestBuffer, context.draft.newTblidx);
     const nextBuffer = Buffer.from(latestBuffer);
-    for (const change of context.changes) FIELD_WRITERS[change.id as SkillCreationFieldId]!(nextBuffer, recordOffset, change.after);
+    applySkillChanges(nextBuffer, recordOffset, context.changes);
 
     // As etapas do pack vao primeiro: dependem de arquivos externos ao repositorio, entao
     // falhar aqui aborta antes de encostar no RDF do servidor. Se o RDF falhar depois, o
@@ -214,9 +236,7 @@ export async function publishSkillDraft(draftId: string, confirmationToken: stri
       if (replaced?.backupPath) await restoreSkillPackBackup(replaced.packPath, replaced.backupPath).catch(() => undefined);
       throw error;
     }
-  } finally {
-    publicationInProgress = false;
-  }
+  });
 }
 
 export function skillPackDownloadDirectory(draftId: string) {
@@ -228,9 +248,7 @@ async function publishSkillPacks(tblidx: number, changes: SkillPublishChange[], 
   if (!options.replaceClientPack && !options.prepareDownload) return { replaced: null, download: null };
 
   const directory = await resolveRequestedPackDirectory(options.clientPackDirectory);
-  const writeFields: SkillPackFieldWriter = (buffer, recordOffset) => {
-    for (const change of changes) FIELD_WRITERS[change.id as SkillCreationFieldId]!(buffer, recordOffset, change.after);
-  };
+  const writeFields: SkillPackFieldWriter = (buffer, recordOffset) => applySkillChanges(buffer, recordOffset, changes);
 
   const replaced = options.replaceClientPack
     ? await applySkillPackChanges(tblidx, writeFields, { backupDirectory: path.join(process.cwd(), "data", "skill-pack-backups"), label: draftId, directory })
@@ -255,43 +273,7 @@ async function writeSkillRdf(
   download: SkillPackWriteResult | null,
 ) {
   {
-    const backupDirectory = path.join(process.cwd(), "data", "skill-rdf-backups");
-    await mkdir(backupDirectory, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupPath = path.join(backupDirectory, `Table_Skill_Data.${stamp}.before-${draftId}.rdf`);
-    await copyFile(context.rdfPath, backupPath, fsConstants.COPYFILE_EXCL);
-    if (hashBuffer(await readFile(backupPath)) !== hashBuffer(latestBuffer)) throw new Error("A verificação do backup RDF falhou; publicação cancelada.");
-
-    const temporaryPath = `${context.rdfPath}.admin-${randomUUID()}.tmp`;
-    const rollbackPath = `${context.rdfPath}.admin-${randomUUID()}.rollback`;
-    await writeFile(temporaryPath, nextBuffer, { flag: "wx" });
-    let originalMoved = false;
-    try {
-      await rename(context.rdfPath, rollbackPath);
-      originalMoved = true;
-      await rename(temporaryPath, context.rdfPath);
-    } catch (error) {
-      if (originalMoved) await rename(rollbackPath, context.rdfPath).catch(() => undefined);
-      await unlink(temporaryPath).catch(() => undefined);
-      throw error;
-    }
-
-    try {
-      invalidateSkillCatalogCache();
-      const updatedCatalog = await loadSkillCatalog();
-      const updatedSkill = updatedCatalog.skills.find((skill) => skill.tblidx === context.draft.newTblidx);
-      const updatedValues = updatedSkill ? getSkillCreationBaseValues(updatedSkill) : {};
-      const failed = context.changes.filter((change) => !sameValue(updatedValues[change.id], change.after));
-      if (failed.length) throw new Error(`A verificação após a gravação falhou nos campos: ${failed.map((change) => change.label).join(", ")}.`);
-    } catch (error) {
-      await unlink(context.rdfPath).catch(() => undefined);
-      await rename(rollbackPath, context.rdfPath);
-      invalidateSkillCatalogCache();
-      throw error;
-    }
-
-    await unlink(rollbackPath);
-    const relativeBackup = path.relative(process.cwd(), backupPath);
+    const relativeBackup = await replaceSkillRdf(context.rdfPath, latestBuffer, nextBuffer, draftId, [{ tblidx: context.draft.newTblidx, changes: context.changes }]);
     const publishedDraft = await markSkillDraftPublished(draftId, administrator, relativeBackup);
     return {
       draft: publishedDraft,
@@ -315,4 +297,58 @@ async function writeSkillRdf(
       },
     };
   }
+}
+
+/**
+ * Troca o Table_Skill_Data.rdf pelo conteúdo novo com backup verificado, troca atômica e
+ * conferência depois de gravar: relê o catálogo e confirma campo a campo. Qualquer falha
+ * devolve o arquivo original. Serve tanto para um rascunho quanto para um lote.
+ */
+export async function replaceSkillRdf(
+  rdfPath: string,
+  latestBuffer: Buffer,
+  nextBuffer: Buffer,
+  label: string,
+  expected: { tblidx: number; changes: SkillPublishChange[] }[],
+) {
+  const backupDirectory = path.join(process.cwd(), "data", "skill-rdf-backups");
+  await mkdir(backupDirectory, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = path.join(backupDirectory, `Table_Skill_Data.${stamp}.before-${label}.rdf`);
+  await copyFile(rdfPath, backupPath, fsConstants.COPYFILE_EXCL);
+  if (hashBuffer(await readFile(backupPath)) !== hashBuffer(latestBuffer)) throw new Error("A verificação do backup RDF falhou; publicação cancelada.");
+
+  const temporaryPath = `${rdfPath}.admin-${randomUUID()}.tmp`;
+  const rollbackPath = `${rdfPath}.admin-${randomUUID()}.rollback`;
+  await writeFile(temporaryPath, nextBuffer, { flag: "wx" });
+  let originalMoved = false;
+  try {
+    await rename(rdfPath, rollbackPath);
+    originalMoved = true;
+    await rename(temporaryPath, rdfPath);
+  } catch (error) {
+    if (originalMoved) await rename(rollbackPath, rdfPath).catch(() => undefined);
+    await unlink(temporaryPath).catch(() => undefined);
+    throw error;
+  }
+
+  try {
+    invalidateSkillCatalogCache();
+    const updatedCatalog = await loadSkillCatalog();
+    const failed: string[] = [];
+    for (const item of expected) {
+      const updatedSkill = updatedCatalog.skills.find((skill) => skill.tblidx === item.tblidx);
+      const updatedValues = updatedSkill ? getSkillCreationBaseValues(updatedSkill) : {};
+      for (const change of item.changes) if (!sameValue(updatedValues[change.id], change.after)) failed.push(`#${item.tblidx} ${change.label}`);
+    }
+    if (failed.length) throw new Error(`A verificação após a gravação falhou em: ${failed.join(", ")}.`);
+  } catch (error) {
+    await unlink(rdfPath).catch(() => undefined);
+    await rename(rollbackPath, rdfPath);
+    invalidateSkillCatalogCache();
+    throw error;
+  }
+
+  await unlink(rollbackPath);
+  return path.relative(process.cwd(), backupPath);
 }

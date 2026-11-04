@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Falha ao listar contas", error);
     return NextResponse.json(
-      { error: "Não foi possível consultar os bancos do Dbo World." },
+      { error: "Não foi possível consultar os bancos do MDBO." },
       { status: 503 },
     );
   }

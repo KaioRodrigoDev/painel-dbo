@@ -49,3 +49,16 @@ export function getAdminConfig() {
       maxCharacterLevel: process.env.MAX_CHARACTER_LEVEL ?? "100",
     });
 }
+
+/**
+ * Filas que o painel grava para o QueryServer executar (edição de personagem, correio e
+ * Cash Shop). O QueryServer do MDBO ainda não lê nenhuma delas: com elas ligadas, a
+ * solicitação ficaria "pendente" para sempre. Por isso nascem desligadas e só voltam quando
+ * MDBO_ADMIN_QUEUES listar as que o servidor passou a processar, ex.: "character,mail,cashshop".
+ */
+export type GameQueue = "character" | "mail" | "cashshop";
+
+export function getGameQueues() {
+  const enabled = new Set((process.env.MDBO_ADMIN_QUEUES ?? "").split(",").map((entry) => entry.trim().toLowerCase()));
+  return { characterEdits: enabled.has("character"), mail: enabled.has("mail"), cashShop: enabled.has("cashshop") };
+}

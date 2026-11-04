@@ -64,7 +64,7 @@ export function ServerManagerPanel() {
   async function runAction(action: "start" | "stop" | "restart" | "start-all" | "stop-all", service?: ManagedServer) {
     if ((action === "stop-all" || action === "stop" || action === "restart") &&
       !window.confirm(action === "stop-all"
-        ? "Parar todos os serviços do Dbo World? Jogadores conectados serão desconectados."
+        ? "Parar todos os serviços do MDBO? Jogadores conectados serão desconectados."
         : action === "stop" ? `Parar ${service?.name}?` : `Reiniciar ${service?.name}?`)) return;
 
     const key = service?.id ?? action;

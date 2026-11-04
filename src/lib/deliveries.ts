@@ -2,7 +2,7 @@ import "server-only";
 
 import type { RowDataPacket } from "mysql2/promise";
 
-import { ensureAdminSchema, getAccountPool, getCharacterPool } from "@/lib/db";
+import { ensureAdminSchema, getAccountPool, getCharacterPool, tableExists } from "@/lib/db";
 import type { DeliveryEntry, DeliveriesResponse } from "@/lib/types";
 
 type MailRow = RowDataPacket & {
@@ -30,15 +30,17 @@ export async function listDeliveries(input: {
   await ensureAdminSchema();
   const accountPool = getAccountPool();
   const characterPool = getCharacterPool();
+  // Com a fila desligada a tabela pode nem existir: o histórico mostra o que houver.
+  const [hasMail, hasCash] = await Promise.all([tableExists(characterPool, "admin_mail_items"), tableExists(accountPool, "admin_cashshop_items")]);
   const [mailRows, cashRows] = await Promise.all([
-    input.channel === "cashshop" ? Promise.resolve([] as MailRow[]) : characterPool.query<MailRow[]>(`SELECT
-      q.Id,q.AccountID,q.CharID,c.CharName,q.ItemTblidx,q.ItemName,q.StackCount,q.RequestedBy,
+    input.channel === "cashshop" || !hasMail ? Promise.resolve([] as MailRow[]) : characterPool.query<MailRow[]>(`SELECT
+      q.Id,q.AccountID,q.CharID,c.char_name AS CharName,q.ItemTblidx,q.ItemName,q.StackCount,q.RequestedBy,
       q.Status,q.ItemID,q.MailID,q.ErrorMessage,q.CreatedAt,q.UpdatedAt,q.ClaimedAt,q.ClaimedByCharID
-      FROM admin_mail_items q LEFT JOIN characters c ON c.CharID=q.CharID ORDER BY q.Id DESC LIMIT 5000`).then(([rows]) => rows),
-    input.channel === "mail" ? Promise.resolve([] as CashRow[]) : accountPool.query<CashRow[]>(`SELECT
-      q.Id,q.AccountID,a.Username,q.ItemTblidx,q.ItemName,q.StackCount,q.RequestedBy,q.Status,
+      FROM admin_mail_items q LEFT JOIN characters c ON c.id=q.CharID ORDER BY q.Id DESC LIMIT 5000`).then(([rows]) => rows),
+    input.channel === "mail" || !hasCash ? Promise.resolve([] as CashRow[]) : accountPool.query<CashRow[]>(`SELECT
+      q.Id,q.AccountID,a.username AS Username,q.ItemTblidx,q.ItemName,q.StackCount,q.RequestedBy,q.Status,
       q.ProductID,q.ErrorMessage,q.CreatedAt,q.UpdatedAt
-      FROM admin_cashshop_items q LEFT JOIN accounts a ON a.AccountID=q.AccountID ORDER BY q.Id DESC LIMIT 5000`).then(([rows]) => rows),
+      FROM admin_cashshop_items q LEFT JOIN accounts a ON a.id=q.AccountID ORDER BY q.Id DESC LIMIT 5000`).then(([rows]) => rows),
   ]);
 
   const missingAccountIds = [...new Set(mailRows.map((row) => row.AccountID))];
@@ -46,7 +48,7 @@ export async function listDeliveries(input: {
   if (missingAccountIds.length) {
     const placeholders = missingAccountIds.map(() => "?").join(",");
     const [rows] = await accountPool.query<(RowDataPacket & { AccountID: number; Username: string })[]>(
-      `SELECT AccountID,Username FROM accounts WHERE AccountID IN (${placeholders})`, missingAccountIds,
+      `SELECT id AS AccountID,username AS Username FROM accounts WHERE id IN (${placeholders})`, missingAccountIds,
     );
     rows.forEach((row) => usernames.set(row.AccountID, row.Username));
   }

@@ -3,6 +3,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { Pagination } from "@/components/pagination";
 import type {
   DropPublishChange, ItemCatalogResponse, RecipeDraft, RecipeItemCandidate, RecipeListResponse,
   RecipeMaterialValue, RecipePublishPreview, RecipeResultValue, RecipeValues,
@@ -16,16 +17,44 @@ type EditorSeed = Omit<RecipeValues, "results" | "materials"> & {
 
 const formatNumber = (value: number) => new Intl.NumberFormat("pt-BR").format(value);
 
-type ItemOption = { tblidx: number; name: string; iconName: string };
+export type ItemOption = { tblidx: number; name: string; iconName: string; maxStack?: number };
 
-function ItemIcon({ iconName }: { iconName: string }) {
+export function ItemIcon({ iconName, size = 26 }: { iconName: string; size?: number }) {
   const [failed, setFailed] = useState(false);
-  if (!iconName || failed) return <span className="dropItemIcon">—</span>;
-  return <span className="dropItemIcon"><Image src={`/api/items/icons/${encodeURIComponent(iconName)}`} alt="" width={26} height={26} unoptimized onError={() => setFailed(true)} /></span>;
+  const style = size === 26 ? undefined : { width: size, height: size };
+  if (!iconName || failed) return <span className="dropItemIcon" style={style}>—</span>;
+  return <span className="dropItemIcon" style={style}><Image src={`/api/items/icons/${encodeURIComponent(iconName)}`} alt="" width={size} height={size} unoptimized onError={() => setFailed(true)} /></span>;
+}
+
+export type FormulaSlot = { tblidx: number; name: string; iconName: string; missing?: boolean; badge: string };
+
+/** Um item da fórmula: ícone com o selo de quantidade ou chance, e o nome no tooltip. */
+function FormulaChip({ slot, showName }: { slot: FormulaSlot; showName?: boolean }) {
+  const titulo = `${slot.name} · #${slot.tblidx} · ${slot.badge}${slot.missing ? " · item não existe na tabela" : ""}`;
+  return <span className={`recipeChip${slot.missing ? " missing" : ""}`} title={titulo}>
+    <span className="recipeChipIcon">
+      <ItemIcon iconName={slot.iconName} size={34} />
+      <b>{slot.badge}</b>
+    </span>
+    {showName && <small>{slot.name}</small>}
+  </span>;
+}
+
+/** Materiais → resultados, como o HoiPoi Mix mostra: dá para ler a receita de relance. */
+export function RecipeFormula({ materials, results }: { materials: FormulaSlot[]; results: FormulaSlot[] }) {
+  return <div className="recipeFormula">
+    <div className="recipeFormulaSide">
+      {materials.length ? materials.map((slot, index) => <FormulaChip key={`m${index}`} slot={slot} />) : <span className="recipeFormulaEmpty">sem materiais</span>}
+    </div>
+    <span className="recipeFormulaArrow" aria-label="produz">→</span>
+    <div className="recipeFormulaSide results">
+      {results.length ? results.map((slot, index) => <FormulaChip key={`r${index}`} slot={slot} showName />) : <span className="recipeFormulaEmpty">sem resultado</span>}
+    </div>
+  </div>;
 }
 
 /** Busca um item comum pelo nome, para preencher material e resultado. */
-function ItemPicker({ value, label, resolved, onPick }: {
+export function ItemPicker({ value, label, resolved, onPick }: {
   value: number; label: string; resolved: Map<number, ItemOption>; onPick: (tblidx: number, option: ItemOption | null) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -40,7 +69,7 @@ function ItemPicker({ value, label, resolved, onPick }: {
         const response = await fetch(`/api/items?search=${encodeURIComponent(search.trim())}&page=1`, { signal: controller.signal, cache: "no-store" });
         if (!response.ok) return;
         const body = (await response.json()) as ItemCatalogResponse;
-        setOptions(body.items.slice(0, 20).map((item) => ({ tblidx: item.tblidx, name: item.name, iconName: item.iconName })));
+        setOptions(body.items.slice(0, 20).map((item) => ({ tblidx: item.tblidx, name: item.name, iconName: item.iconName, maxStack: item.maxStack })));
         setOpen(true);
       } catch { /* busca abortada */ }
     }, 350);
@@ -144,15 +173,17 @@ export function RecipePanel() {
     {!loading && data?.recipes.length === 0 && <div className="emptyState">Nenhuma receita corresponde aos filtros.</div>}
 
     {!loading && data && data.recipes.length > 0 && <div className="itemTableWrap"><table className="itemTable">
-      <thead><tr><th>TBLIDX</th><th>Receita</th><th>Produz</th><th>Materiais</th><th>Exige</th><th /></tr></thead>
+      <thead><tr><th>TBLIDX</th><th>Receita</th><th>Materiais → Produz</th><th>Exige</th><th /></tr></thead>
       <tbody>{data.recipes.map((recipe) => <tr key={recipe.tblidx}>
         <td><code>{recipe.tblidx}</code></td>
-        <td><div className="itemIdentity"><ItemIcon iconName={recipe.iconName} /><div>
+        <td><div className="itemIdentity"><ItemIcon iconName={recipe.iconName} size={34} /><div>
           <strong>{recipe.name}</strong>
           <small>{data.recipeTypes.find((entry) => entry.value === recipe.recipeType)?.label ?? `Tipo ${recipe.recipeType}`}{recipe.valid ? "" : " · inativa"}</small>
         </div></div></td>
-        <td><small>{recipe.results.map((slot) => `${slot.name} ${slot.rate}%`).join(" · ") || "—"}</small></td>
-        <td><small>{recipe.materials.map((slot) => `${slot.name} ${slot.quantity}x`).join(" · ") || "—"}</small></td>
+        <td><RecipeFormula
+          materials={recipe.materials.map((slot) => ({ ...slot, badge: `${slot.quantity}x` }))}
+          results={recipe.results.map((slot) => ({ ...slot, badge: `${slot.rate}%` }))}
+        /></td>
         <td><small>Mix {recipe.needMixLevel}<br />{formatNumber(recipe.needMixZenny)} zeni</small></td>
         <td><div className="catalogRowActions">
           {!recipe.hasRecipeItem && <span className="dropDrawBadge" title="Não existe item do tipo Receita com este TBLIDX">órfã</span>}
@@ -161,11 +192,7 @@ export function RecipePanel() {
       </tr>)}</tbody>
     </table></div>}
 
-    {data && data.totalPages > 1 && <nav className="pagination" aria-label="Paginação das receitas">
-      <button disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>← Anterior</button>
-      <span>Página <strong>{data.page}</strong> de {data.totalPages}</span>
-      <button disabled={page >= data.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Próxima →</button>
-    </nav>}
+    {data && <Pagination page={data.page} totalPages={data.totalPages} disabled={loading} onChange={setPage} label="Paginação das receitas" />}
   </div>;
 }
 
@@ -274,6 +301,10 @@ function RecipeEditor({ tblidx, name, nameTextId, initial, operation, recipeType
   }
 
   const somaChances = values.results.filter((slot) => slot.tblidx > 0).reduce((total, slot) => total + slot.rate, 0);
+  const rotulo = (id: number) => {
+    const item = resolved.get(id);
+    return { tblidx: id, name: item?.name ?? `Item #${id}`, iconName: item?.iconName ?? "" };
+  };
 
   return <div className="dropEditorPage">
     <div className="draftCreatorHeader">
@@ -358,6 +389,14 @@ function RecipeEditor({ tblidx, name, nameTextId, initial, operation, recipeType
       </div>
 
       <aside className="dropEditorSide">
+        <div className="dropOrigin recipePreviewCard">
+          <strong>Como vai ficar</strong>
+          <RecipeFormula
+            materials={values.materials.filter((slot) => slot.tblidx > 0).map((slot) => ({ ...rotulo(slot.tblidx), badge: `${slot.quantity}x` }))}
+            results={values.results.filter((slot) => slot.tblidx > 0).map((slot) => ({ ...rotulo(slot.tblidx), badge: `${slot.rate}%` }))}
+          />
+          <p className="dropNote">Mix {values.needMixLevel} · {formatNumber(values.needMixZenny)} zeni{values.valid ? "" : " · inativa"}</p>
+        </div>
         <div className="dropOrigin">
           <strong>Como o servidor usa isto</strong>
           <p className="dropNote">Ao fabricar, ele confere o nível de Mix, o zeni, e cada material <strong>na ordem e na quantidade</strong> definidas aqui.</p>

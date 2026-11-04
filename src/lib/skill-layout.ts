@@ -6,13 +6,13 @@ import { loadPackIndex, resolveClientPackDirectory } from "@/lib/pack-index";
 import { readPackFileContent, replacePackFiles } from "@/lib/pack-writer";
 import { loadActionCatalog } from "@/lib/action-catalog";
 import { loadSkillCatalog } from "@/lib/skill-catalog";
-import { parseSkillLayout, serializeSkillLayout, type LayoutLine, type LineDefinition } from "@/lib/skill-layout-format";
+import { padSkillLayoutGrid, parseSkillLayout, serializeSkillLayout, type LayoutLine, type LineDefinition } from "@/lib/skill-layout-format";
 
 const HEADER_FILE = "gui.pak";
 
 // Arquivo de arvore por classe, conforme CSkillCustomizeGui::GenerateSkillItems.
 // O indice segue a ordem de ePC_CLASS, a mesma que o painel ja usa em CHARACTER_CLASSES.
-const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?: string; kind?: "skill" | "action" }[] = [
+const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?: string; kind?: "skill" | "action"; baseClass?: number }[] = [
   { classIndex: 0, prefix: "hfi" }, { classIndex: 1, prefix: "hmy" }, { classIndex: 2, prefix: "hen" },
   { classIndex: 3, prefix: "nfi" }, { classIndex: 4, prefix: "nmy" }, { classIndex: 5, prefix: "mmi" },
   { classIndex: 6, prefix: "mwo" }, { classIndex: 7, prefix: "hsf" }, { classIndex: 8, prefix: "hsm" },
@@ -24,12 +24,12 @@ const CLASS_FILES: { classIndex: number; prefix: string; suffix?: string; label?
   // de cada classe. Sao os 6 ramos que o cliente realmente preenche -- o de Engenheiro
   // humano esta vazio no original. Usam indices fora da faixa de ePC_CLASS e rotulo
   // proprio, ja que nao sao a arvore de skills daquela classe.
-  { classIndex: 100, prefix: "hfi", suffix: "transform", label: "Transformações — Lutador humano" },
-  { classIndex: 101, prefix: "hmy", suffix: "transform", label: "Transformações — Místico humano" },
-  { classIndex: 102, prefix: "nfi", suffix: "transform", label: "Transformações — Guerreiro Namek" },
-  { classIndex: 103, prefix: "nmy", suffix: "transform", label: "Transformações — Místico Namek" },
-  { classIndex: 104, prefix: "mmi", suffix: "transform", label: "Transformações — Mighty Majin" },
-  { classIndex: 105, prefix: "mwo", suffix: "transform", label: "Transformações — Wonder Majin" },
+  { classIndex: 100, prefix: "hfi", suffix: "transform", label: "Transformações — Lutador humano", baseClass: 0 },
+  { classIndex: 101, prefix: "hmy", suffix: "transform", label: "Transformações — Místico humano", baseClass: 1 },
+  { classIndex: 102, prefix: "nfi", suffix: "transform", label: "Transformações — Guerreiro Namek", baseClass: 3 },
+  { classIndex: 103, prefix: "nmy", suffix: "transform", label: "Transformações — Místico Namek", baseClass: 4 },
+  { classIndex: 104, prefix: "mmi", suffix: "transform", label: "Transformações — Mighty Majin", baseClass: 5 },
+  { classIndex: 105, prefix: "mwo", suffix: "transform", label: "Transformações — Wonder Majin", baseClass: 6 },
   // A arvore de acao e a unica realmente comum a todas as classes.
   { classIndex: 110, prefix: "action", suffix: "skill", label: "Ações do jogador (todas as classes)", kind: "action" },
   // Arvore de transformacao generica. Existe no pack, tem uma unica skill colocada
@@ -66,6 +66,17 @@ export async function listSkillLayoutClasses(directory = resolveClientPackDirect
   }));
 }
 
+/** TBLIDX ja colocados na arvore principal de uma classe (ex.: hfi_skill.scr). */
+async function usedInClassTree(classIndex: number, directory: string) {
+  const entry = classEntry(classIndex);
+  try {
+    const source = (await readPackFileContent(HEADER_FILE, packedPathForClass(entry.prefix, entry.suffix), directory)).toString("latin1");
+    return new Set(parseSkillLayout(source).cells.map((cell) => cell.tblidx).filter((tblidx): tblidx is number => tblidx !== null));
+  } catch {
+    return new Set<number>();
+  }
+}
+
 function classEntry(classIndex: number) {
   const entry = CLASS_FILES.find((candidate) => candidate.classIndex === classIndex);
   if (!entry) throw new Error(`Classe ${classIndex} não possui árvore de skills.`);
@@ -76,7 +87,7 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
   const entry = classEntry(classIndex);
   const packedPath = packedPathForClass(entry.prefix, entry.suffix);
   const source = (await readPackFileContent(HEADER_FILE, packedPath, directory)).toString("latin1");
-  const layout = parseSkillLayout(source);
+  const layout = padSkillLayoutGrid(parseSkillLayout(source));
 
   // Dados de exibicao (nome e icone) vem do RDF do servidor, nao do .scr. QUAL rdf depende
   // do tipo de bloco da arvore: a arvore de acoes guarda id de Table_Action_Data, nao TBLIDX
@@ -92,10 +103,17 @@ export async function loadSkillLayout(classIndex: number, directory = resolveCli
   // cadeia e sao alcancados por nextSkillId; nao ocupam celulas separadas no cliente.
   // Na arvore de acoes, "disponiveis" sao todas as acoes validas da tabela -- nao ha classe
   // para filtrar, que e justamente o que faz esta arvore valer para todo mundo.
+  //
+  // A arvore de transformacao de uma classe base nao tinha nenhuma disponivel (o indice dela
+  // fica fora de ePC_CLASS), entao so dava para ver as duas skills ja colocadas. Ela passa a
+  // oferecer as skills raiz da classe base que NAO estao na arvore principal dessa classe --
+  // as que ja aparecem la nao se repetem aqui.
+  const classeDasSkills = classIndex <= 20 ? classIndex : entry.baseClass;
+  const naArvorePrincipal = entry.baseClass !== undefined ? await usedInClassTree(entry.baseClass, directory) : new Set<number>();
   const disponiveis = isAction
     ? (actionCatalog?.actions ?? []).filter((action) => action.valid)
-    : classIndex <= 20
-      ? (catalog?.skills ?? []).filter((skill) => skill.valid && skill.grade <= 1 && (skill.classFlag & (1 << classIndex)) !== 0)
+    : classeDasSkills !== undefined
+      ? (catalog?.skills ?? []).filter((skill) => skill.valid && skill.grade <= 1 && (skill.classFlag & (1 << classeDasSkills)) !== 0 && !naArvorePrincipal.has(skill.tblidx))
       : [];
   const tblidxs = new Set([...usados, ...disponiveis.map((skill) => skill.tblidx)]);
 
@@ -217,7 +235,7 @@ export async function publishSkillLayout(
   if (blockingIssues.length) throw new Error(blockingIssues.join(" "));
 
   const source = (await readPackFileContent(HEADER_FILE, packedPath, directory)).toString("latin1");
-  const layout = parseSkillLayout(source);
+  const layout = padSkillLayoutGrid(parseSkillLayout(source));
   const serialized = serializeSkillLayout(
     layout,
     new Map(placements.map((placement) => [chave(placement), placement.tblidx])),

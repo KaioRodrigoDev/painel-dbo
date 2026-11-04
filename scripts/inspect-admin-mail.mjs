@@ -45,7 +45,7 @@ try {
     }
     await characterPool.query(`UPDATE admin_mail_items q INNER JOIN mail m ON m.id=q.MailID
       SET q.Status='claimed',q.ClaimedByCharID=COALESCE(q.ClaimedByCharID,q.CharID)
-      WHERE m.IsAccept=1 AND q.Status='applied'`);
+      WHERE m.is_accept=1 AND q.Status='applied'`);
     await characterPool.query(`CREATE TABLE IF NOT EXISTS admin_mail_batches (
       Id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, BatchKey CHAR(36) NOT NULL,
       VipLevel TINYINT UNSIGNED NOT NULL, ItemTblidx INT UNSIGNED NOT NULL,

@@ -32,6 +32,8 @@ export type LayoutCell = {
   /** Trecho exato do bloco no arquivo original. */
   start: number;
   end: number;
+  /** Posição que o arquivo não declara; só vira bloco quando recebe uma skill. */
+  virtual?: boolean;
 };
 
 /** Lados do icone onde uma seta pode encostar, como o cliente aceita. */
@@ -125,13 +127,18 @@ export function parseSkillLayout(source: string): SkillLayout {
 
   // Os slots de seta ficam na segunda secao. Os comentados tambem sao lidos, porque sao
   // eles que recebem uma seta nova -- a quantidade de slots do arquivo e fixa.
+  //
+  // Os arquivos das subclasses (hsf, nsk...) misturam dois estilos: "// RC 0  3" e
+  // "//RC 0  3", e o slot livre aparece como "//@RC03", sem espaco depois do @. Todas as
+  // setas ativas desses arquivos usam o estilo sem espaco, entao aceitar so um deles fazia
+  // a arvore da subclasse aparecer sem nenhuma seta.
   const lines: LayoutLine[] = [];
   if (cutoff >= 0) {
-    const lineMarker = /^\/\/ RC[ \t]+(\d+)[ \t]+(\d+)[ \t]+(\S+)[ \t]*$/gm;
+    const lineMarker = /^\/\/ ?RC[ \t]+(\d+)[ \t]+(\d+)[ \t]+(\S+)[ \t]*$/gm;
     for (let marker = lineMarker.exec(source); marker; marker = lineMarker.exec(source)) {
       if (marker.index < cutoff) continue;
       const afterMarker = source.indexOf("\n", marker.index) + 1;
-      const block = /^(\/\/)?(UpgradeLine|OptionLine|@)[ \t]+(\S+)/.exec(source.slice(afterMarker, afterMarker + 60));
+      const block = /^(\/\/)?(UpgradeLine|OptionLine|@)[ \t]*(\S+)/.exec(source.slice(afterMarker, afterMarker + 60));
       if (!block) continue;
 
       const active = !block[1];
@@ -162,6 +169,50 @@ export function parseSkillLayout(source: string): SkillLayout {
     lines,
     columns: cells.reduce((max, cell) => Math.max(max, cell.column + 1), 0),
     rows: cells.reduce((max, cell) => Math.max(max, cell.row + 1), 0),
+  };
+}
+
+/**
+ * Geometria das árvores do jogo: toda célula fica em x = 8 + coluna * 87 e y = 15 + linha * 64
+ * (conferido nos .scr originais). O cliente posiciona pelo x/y do bloco; o comentário
+ * "//RC c r" serve só para este painel achar a célula.
+ */
+const GRID = { originX: 8, originY: 15, stepX: 87, stepY: 64, columns: 6, minRows: 4, extraRows: 2 };
+
+/**
+ * Completa a grade com posições virtuais onde o arquivo não declara nenhuma.
+ *
+ * As árvores de transformação (hfi_transform.scr e afins) vêm com só duas células, então não
+ * havia para onde arrastar nada. A janela do cliente é a mesma das outras árvores, com rolagem,
+ * e aceita qualquer x/y; as posições novas usam a mesma geometria do jogo. Árvores que já
+ * declaram a grade inteira não ganham nada.
+ */
+export function padSkillLayoutGrid(layout: SkillLayout): SkillLayout {
+  const taken = new Set(layout.cells.map((cell) => `${cell.column},${cell.row}`));
+  const usedRows = layout.cells.filter((cell) => cell.tblidx !== null).reduce((max, cell) => Math.max(max, cell.row + 1), 0);
+  const rows = Math.max(layout.rows, GRID.minRows, usedRows + GRID.extraRows);
+  // Bloco novo nasce com o tipo que a árvore usa (skill, htb ou action), não sempre "skill".
+  const counts = new Map<string, number>();
+  for (const cell of layout.cells) if (cell.tblidx !== null) counts.set(cell.kind, (counts.get(cell.kind) ?? 0) + 1);
+  const kind = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "skill";
+  const insertAt = layout.source.indexOf(LINE_SECTION) >= 0 ? layout.source.indexOf(LINE_SECTION) : layout.source.length;
+
+  const cells = [...layout.cells];
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < GRID.columns; column += 1) {
+      if (taken.has(`${column},${row}`)) continue;
+      cells.push({
+        column, row, kind, tblidx: null, virtual: true, start: insertAt, end: insertAt,
+        x: GRID.originX + column * GRID.stepX, y: GRID.originY + row * GRID.stepY,
+      });
+    }
+  }
+  cells.sort((a, b) => a.row - b.row || a.column - b.column);
+  return {
+    ...layout,
+    cells,
+    columns: Math.max(layout.columns, GRID.columns),
+    rows: Math.max(layout.rows, rows),
   };
 }
 
@@ -204,10 +255,29 @@ export function serializeSkillLayout(
   // O tipo do bloco acompanha a skill de onde ela veio, nunca a celula de destino.
   const kindPorSkill = new Map(layout.cells.filter((cell) => cell.tblidx !== null).map((cell) => [cell.tblidx as number, cell.kind]));
 
+  // Sem bloco de origem (skill vinda da lista de disponíveis), vale o tipo da própria célula
+  // quando ele é carregável -- na árvore de ações isso é "action", não "skill".
+  const kindFor = (cell: LayoutCell, tblidx: number) =>
+    kindPorSkill.get(tblidx) ?? ((ACTIVE_CELL_KINDS as readonly string[]).includes(cell.kind) ? cell.kind : "skill");
+
+  const novos: string[] = [];
+  let insertAt = -1;
   for (const cell of layout.cells) {
     const tblidx = placements.get(`${cell.column},${cell.row}`);
     if (tblidx === undefined || tblidx === cell.tblidx) continue;
-    edits.push({ start: cell.start, end: cell.end, text: renderCell(cell, tblidx, tblidx === null ? cell.kind : kindPorSkill.get(tblidx) ?? "skill") });
+    if (cell.virtual) {
+      // Posição nova: entra como bloco inteiro, com o marcador, antes da seção de setas.
+      if (tblidx === null) continue;
+      insertAt = cell.start;
+      novos.push(`//RC ${cell.column}  ${cell.row}${EOL}${renderCell(cell, tblidx, kindFor(cell, tblidx))}${EOL}`);
+      continue;
+    }
+    edits.push({ start: cell.start, end: cell.end, text: renderCell(cell, tblidx, tblidx === null ? cell.kind : kindFor(cell, tblidx)) });
+  }
+  if (novos.length) {
+    const before = layout.source.slice(0, insertAt);
+    const separator = before.endsWith(EOL) || before.length === 0 ? "" : EOL;
+    edits.push({ start: insertAt, end: insertAt, text: `${separator}${novos.join("")}` });
   }
 
   for (const line of layout.lines) {

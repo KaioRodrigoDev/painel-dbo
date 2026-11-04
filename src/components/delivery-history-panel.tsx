@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { DeliveriesResponse, DeliveryEntry } from "@/lib/types";
+import { Pagination } from "@/components/pagination";
 
 const labels: Record<string, string> = {
   pending: "Na fila", processing: "Processando", applied: "Disponível",
@@ -78,6 +79,6 @@ export function DeliveryHistoryPanel() {
         <td>{entry.status === "claimed" ? <><strong className="claimedText">✓ Recebido</strong><small>{date(entry.claimedAt)}{entry.claimedByCharacterId ? ` · Char #${entry.claimedByCharacterId}` : ""}</small></> : <><strong>{entry.channel === "cashshop" && entry.status === "applied" ? "Disponível na conta" : "—"}</strong><small>{entry.channel === "cashshop" ? "O Cash Shop não informa retirada" : "Aguardando resgate"}</small></>}</td>
       </tr>)}
     </tbody></table></div>}
-    {data && data.totalPages > 1 && <nav className="pagination"><button disabled={page <= 1 || loading} onClick={() => setPage(value => value - 1)}>← Anterior</button><span>Página <strong>{data.page}</strong> de {data.totalPages}</span><button disabled={page >= data.totalPages || loading} onClick={() => setPage(value => value + 1)}>Próxima →</button></nav>}
+    {data && <Pagination page={data.page} totalPages={data.totalPages} disabled={loading} onChange={setPage} label="Paginação dos envios" />}
   </div>;
 }

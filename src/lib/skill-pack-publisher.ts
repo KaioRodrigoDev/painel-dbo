@@ -34,6 +34,8 @@ export type SkillPackWriteResult = {
 };
 
 export type SkillPackFieldWriter = (recordBuffer: Buffer, recordOffset: number) => void;
+/** Recebe a tabela inteira (cabeçalho + registros) e altera quantos registros quiser. */
+export type SkillPackTableWriter = (table: Buffer) => void;
 
 const hashBuffer = (buffer: Buffer) => createHash("sha256").update(buffer).digest("hex");
 
@@ -117,20 +119,25 @@ function findRecordOffset(buffer: Buffer, tblidx: number) {
  * reempacotamento. Criar registro novo faria o pack crescer e exigiria reconstruir o
  * índice -- por isso `findRecordOffset` recusa TBLIDX inexistente.
  */
-async function patchPackFile(packPath: string, entry: PackEntry, tblidx: number, writeFields: SkillPackFieldWriter) {
+async function patchPackTable(packPath: string, entry: PackEntry, writeTable: SkillPackTableWriter) {
   const before = await readSlice(packPath, entry.offset, entry.size);
-  const recordOffset = findRecordOffset(before, tblidx);
 
   const after = Buffer.from(before);
-  writeFields(after, recordOffset);
+  writeTable(after);
   if (after.length !== before.length) throw new Error("A gravação alterou o tamanho da tabela; isso exigiria reempacotar o pack.");
 
   if (!after.equals(before)) {
-    // Só os bytes do registro mudam, entao a gravacao e pontual em vez de reescrever 18 MB.
+    // Só a faixa entre o primeiro e o último byte alterado vai para o disco, em vez de
+    // reescrever um arquivo de dezenas de MB. Vale para uma skill ou para um lote inteiro.
+    let first = 0;
+    while (after[first] === before[first]) first += 1;
+    let last = after.length - 1;
+    while (last > first && after[last] === before[last]) last -= 1;
+
     const handle = await open(/* turbopackIgnore: true */ packPath, "r+");
     try {
-      const record = after.subarray(recordOffset, recordOffset + SKILL_RDF_RECORD_SIZE);
-      await handle.write(record, 0, record.length, entry.offset + recordOffset);
+      const changed = after.subarray(first, last + 1);
+      await handle.write(changed, 0, changed.length, entry.offset + first);
       await handle.sync();
     } finally {
       await handle.close();
@@ -143,10 +150,12 @@ async function patchPackFile(packPath: string, entry: PackEntry, tblidx: number,
   return { beforeHash: hashBuffer(before), afterHash: hashBuffer(after) };
 }
 
+const singleRecordWriter = (tblidx: number, writeFields: SkillPackFieldWriter): SkillPackTableWriter =>
+  (table) => writeFields(table, findRecordOffset(table, tblidx));
+
 /** Substitui em definitivo o pack do cliente, guardando backup antes. */
-export async function applySkillPackChanges(
-  tblidx: number,
-  writeFields: SkillPackFieldWriter,
+export async function applySkillPackTable(
+  writeTable: SkillPackTableWriter,
   options: { backupDirectory: string; label: string; directory?: string },
 ): Promise<SkillPackWriteResult> {
   const target = await findSkillTablePackTarget(options.directory);
@@ -156,17 +165,24 @@ export async function applySkillPackChanges(
   const backupPath = path.join(options.backupDirectory, `${target.packFileName}.${stamp}.before-${options.label}.pak`);
   await copyFile(target.packPath, backupPath, fsConstants.COPYFILE_EXCL);
 
-  const hashes = await patchPackFile(target.packPath, target.entry, tblidx, writeFields);
+  const hashes = await patchPackTable(target.packPath, target.entry, writeTable);
   return { packFileName: target.packFileName, packPath: target.packPath, backupPath, ...hashes };
+}
+
+export async function applySkillPackChanges(
+  tblidx: number,
+  writeFields: SkillPackFieldWriter,
+  options: { backupDirectory: string; label: string; directory?: string },
+): Promise<SkillPackWriteResult> {
+  return applySkillPackTable(singleRecordWriter(tblidx, writeFields), options);
 }
 
 /**
  * Gera uma cópia já corrigida para download, sem tocar no pack de origem. É o caminho
  * usado quando o operador quer só o arquivo para substituir manualmente.
  */
-export async function prepareSkillPackDownload(
-  tblidx: number,
-  writeFields: SkillPackFieldWriter,
+export async function prepareSkillPackTableCopy(
+  writeTable: SkillPackTableWriter,
   options: { outputDirectory: string; directory?: string },
 ): Promise<SkillPackWriteResult> {
   const target = await findSkillTablePackTarget(options.directory);
@@ -176,8 +192,16 @@ export async function prepareSkillPackDownload(
   const outputPath = path.join(options.outputDirectory, target.packFileName);
   await copyFile(target.packPath, outputPath);
 
-  const hashes = await patchPackFile(outputPath, target.entry, tblidx, writeFields);
+  const hashes = await patchPackTable(outputPath, target.entry, writeTable);
   return { packFileName: target.packFileName, packPath: outputPath, backupPath: null, ...hashes };
+}
+
+export async function prepareSkillPackDownload(
+  tblidx: number,
+  writeFields: SkillPackFieldWriter,
+  options: { outputDirectory: string; directory?: string },
+): Promise<SkillPackWriteResult> {
+  return prepareSkillPackTableCopy(singleRecordWriter(tblidx, writeFields), options);
 }
 
 /** Devolve o pack ao conteúdo do backup indicado. Usado quando a etapa do RDF falha. */

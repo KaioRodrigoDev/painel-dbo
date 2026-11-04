@@ -33,7 +33,7 @@ type ItemAuditEntry = {
 
 type SkillAuditEntry = {
   administrator: string;
-  action: "skills.draft_create" | "skills.draft_edit" | "skills.rdf_publish" | "skills.layout_publish";
+  action: "skills.draft_create" | "skills.draft_edit" | "skills.draft_discard" | "skills.rdf_publish" | "skills.layout_publish" | "skills.batch_apply" | "skills.batch_export";
   target: string;
   details?: Record<string, unknown>;
 };
@@ -65,7 +65,23 @@ type DropAuditEntry = {
   details?: Record<string, unknown>;
 };
 
-type AuditEntry = CharacterAuditEntry | ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry | DropAuditEntry | MobSkillAuditEntry | RecipeAuditEntry;
+type BattlePassAuditEntry = {
+  administrator: string;
+  action: "battlepass.season_create" | "battlepass.season_update" | "battlepass.season_clone" | "battlepass.season_delete"
+    | "battlepass.season_activate" | "battlepass.season_deactivate" | "battlepass.mission_save" | "battlepass.mission_delete"
+    | "battlepass.reward_save" | "battlepass.reward_delete";
+  target: string;
+  details?: Record<string, unknown>;
+};
+
+type ProfessionAuditEntry = {
+  administrator: string;
+  action: "professions.recipe_update" | "professions.catalog_save" | "professions.catalog_apply";
+  target: string;
+  details?: Record<string, unknown>;
+};
+
+type AuditEntry = ProfessionAuditEntry | BattlePassAuditEntry | CharacterAuditEntry |ServerAuditEntry | ItemAuditEntry | SkillAuditEntry | MailPackageAuditEntry | DropAuditEntry | MobSkillAuditEntry | RecipeAuditEntry;
 
 export async function writeAuditLog(entry: AuditEntry) {
   const auditDirectory = path.join(process.cwd(), "data");

@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
@@ -8,6 +8,7 @@ import { ItemDraftCreator } from "@/components/item-draft-creator";
 import { getItemCreationDefinition } from "@/lib/item-creation-definitions";
 
 import type { GambleRewardsResponse, ItemCatalogEntry, ItemCatalogResponse } from "@/lib/types";
+import { Pagination } from "@/components/pagination";
 
 const RANK_NAMES: Record<number, string> = {
   0: "Sem rank",
@@ -52,6 +53,22 @@ function slotNames(flag: number) {
   return names.length ? names.join(", ") : "Nenhum";
 }
 
+const PAGE_SIZES = [40, 80, 120] as const;
+type PageSize = (typeof PAGE_SIZES)[number];
+const PAGE_SIZE_KEY = "mdbo-admin-items-page-size";
+
+// Preferência só deste navegador; sem localStorage, fica no padrão de 40.
+function readPageSize(): PageSize {
+  try {
+    const saved = Number(window.localStorage.getItem(PAGE_SIZE_KEY));
+    return (PAGE_SIZES as readonly number[]).includes(saved) ? (saved as PageSize) : 40;
+  } catch { return 40; }
+}
+
+function levelLabel(item: ItemCatalogEntry) {
+  return `${item.minimumLevel}${item.maximumLevel && item.maximumLevel !== 255 ? `–${item.maximumLevel}` : ""}`;
+}
+
 function ItemIcon({ item }: { item: ItemCatalogEntry }) {
   const [failed, setFailed] = useState(false);
   if (!item.iconName || failed) {
@@ -76,6 +93,10 @@ export function ItemCatalogPanel() {
   const [itemType, setItemType] = useState("");
   const [rank, setRank] = useState("");
   const [page, setPage] = useState(1);
+  // O painel só monta depois da hidratação (a aba vem do hash da URL), então ler o
+  // localStorage aqui não diverge do HTML do servidor.
+  const [pageSize, setPageSize] = useState<PageSize>(readPageSize);
+  const listTop = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<ItemCatalogResponse | null>(null);
   const [selected, setSelected] = useState<ItemCatalogEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +106,7 @@ export function ItemCatalogPanel() {
   const loadItems = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ page: String(page) });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (search) params.set("search", search);
     if (itemType) params.set("itemType", itemType);
     if (rank) params.set("rank", rank);
@@ -107,7 +128,7 @@ export function ItemCatalogPanel() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [itemType, page, rank, router, search]);
+  }, [itemType, page, pageSize, rank, router, search]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -134,6 +155,22 @@ export function ItemCatalogPanel() {
     setPage(1);
   }
 
+  function changePageSize(size: PageSize) {
+    setPageSize(size);
+    setPage(1);
+    try { window.localStorage.setItem(PAGE_SIZE_KEY, String(size)); } catch { /* fica só nesta sessão */ }
+  }
+
+  // A paginação de baixo fica longe do topo com 120 cards; trocar de página volta ao começo da lista.
+  function goToPage(next: number) {
+    setPage(next);
+    listTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const pagination = data && data.totalPages > 1 && (
+    <Pagination page={data.page} totalPages={data.totalPages} disabled={loading} onChange={goToPage} label="Paginação do catálogo" />
+  );
+
   if (creating) return <ItemDraftCreator onBack={() => setCreating(false)} />;
 
   return (
@@ -155,9 +192,13 @@ export function ItemCatalogPanel() {
         {(search || itemType || rank) && <button className="catalogClearButton" type="button" onClick={clearFilters}>Limpar</button>}
       </form>
 
-      <div className="listHeader">
+      <div className="listHeader" ref={listTop}>
         <div><strong>{data ? formatNumber(data.total) : "—"}</strong><span> itens encontrados</span></div>
         <div className="catalogSource">
+          <div className="pageSizeSwitch" role="group" aria-label="Itens por página">
+            <span>Por página</span>
+            {PAGE_SIZES.map((size) => <button key={size} type="button" className={size === pageSize ? "active" : ""} aria-pressed={size === pageSize} onClick={() => changePageSize(size)}>{size}</button>)}
+          </div>
           {data && <span>{data.sourceFile} + {data.textSourceFile} · {new Date(data.sourceUpdatedAt).toLocaleString("pt-BR")}</span>}
           <button className="refreshButton" onClick={() => void loadItems()} disabled={loading}>↻ Atualizar</button>
           <button className="primaryButton compact" onClick={() => setCreating(true)}>+ Criar item</button>
@@ -168,34 +209,37 @@ export function ItemCatalogPanel() {
       {loading && <div className="loadingState"><span className="spinner" /> Lendo o catálogo de itens...</div>}
       {!loading && data?.items.length === 0 && <div className="emptyState">Nenhum item corresponde aos filtros.</div>}
 
-      {!loading && data && data.items.length > 0 && (
-        <div className="itemTableWrap">
-          <table className="itemTable">
-            <thead><tr><th>TBLIDX</th><th>Item</th><th>Tipo</th><th>Rank</th><th>Nível</th><th>Valores</th><th /></tr></thead>
-            <tbody>
-              {data.items.map((item) => (
-                <tr key={item.tblidx}>
-                  <td><code>{item.tblidx}</code></td>
-                  <td><div className="itemIdentity"><ItemIcon item={item} /><div><strong>{item.name}</strong><small>{item.iconName || "Sem ícone informado"}</small></div></div></td>
-                  <td><span className="catalogBadge">{typeName(item.itemType)}</span></td>
-                  <td><span className={`rankBadge rank${item.rank}`}>{rankName(item.rank)}</span></td>
-                  <td>{item.minimumLevel}{item.maximumLevel && item.maximumLevel !== 255 ? `–${item.maximumLevel}` : ""}</td>
-                  <td><small>Compra {formatNumber(item.cost)}<br />Venda {formatNumber(item.sellPrice)}</small></td>
-                  <td><button className="catalogDetailsButton" onClick={() => setSelected(item)}>Detalhes</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {!loading && data && data.items.length > 0 && <>
+        {pagination && <div className="paginationTop">{pagination}</div>}
+        {/* O card inteiro abre os detalhes; não há botão separado para isso. */}
+        <div className="itemCardGrid">
+          {data.items.map((item) => (
+            <button
+              key={item.tblidx}
+              type="button"
+              className={`itemCard rank${item.rank}`}
+              onClick={() => setSelected(item)}
+              title={`${item.name} · ${item.iconName || "sem ícone"} · clique para ver os detalhes`}
+            >
+              <div className="itemCardHead">
+                <ItemIcon item={item} />
+                <div><strong>{item.name}</strong><code>#{item.tblidx}</code></div>
+              </div>
+              <div className="itemCardBadges">
+                <span className="catalogBadge">{typeName(item.itemType)}</span>
+                <span className={`rankBadge rank${item.rank}`}>{rankName(item.rank)}</span>
+              </div>
+              <dl className="itemCardFacts">
+                <div><dt>Nível</dt><dd>{levelLabel(item)}</dd></div>
+                <div><dt>Compra</dt><dd>{formatNumber(item.cost)}</dd></div>
+                <div><dt>Venda</dt><dd>{formatNumber(item.sellPrice)}</dd></div>
+              </dl>
+            </button>
+          ))}
         </div>
-      )}
+      </>}
 
-      {data && data.totalPages > 1 && (
-        <nav className="pagination" aria-label="Paginação do catálogo">
-          <button disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>← Anterior</button>
-          <span>Página <strong>{data.page}</strong> de {data.totalPages}</span>
-          <button disabled={page >= data.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Próxima →</button>
-        </nav>
-      )}
+      {pagination}
 
       {selected && <ItemDetails item={selected} onClose={() => setSelected(null)} />}
     </div>

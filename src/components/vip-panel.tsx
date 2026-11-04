@@ -72,8 +72,9 @@ type Overview = {
   lastRun: { startedAt: string; finishedAt: string | null; status: string; processed: number; error: string | null } | null;
   vipExpirySupported: boolean;
   updatedAt: string;
+  integrations?: { characterEdits: boolean; mail: boolean; cashShop: boolean };
 };
-export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccounts: (state?: string, level?: string) => void; onRenew: (account: VipAccount) => void; onBulkMail: (level: number) => void }) {
+export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccounts: (state?: string, level?: string) => void; onRenew: (account: VipAccount) => void; onBulkMail: (level: number, integrations?: { characterEdits: boolean; mail: boolean; cashShop: boolean }) => void }) {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -116,7 +117,10 @@ export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccount
               <span className="vipLevelMark">{level}</span><span className="vipLevelInfo"><span><b>VIP {level}</b><em>{count} {count === 1 ? "conta" : "contas"}</em></span><i><u style={{ width: `${percentage}%` }} /></i></span><strong>{percentage}%</strong>
             </button>;
           })}</div>
-          <div className="vipBulkActions"><span>Enviar item para um grupo:</span>{[1, 2, 3].map(level => <button key={level} onClick={() => onBulkMail(level)}>✉ VIP {level}</button>)}</div>
+          {/* Envio em grupo depende de uma fila que o servidor precisa processar; sem ela, o botão só criaria pendências. */}
+          {data.integrations?.mail || data.integrations?.cashShop
+            ? <div className="vipBulkActions"><span>Enviar item para um grupo:</span>{[1, 2, 3].map(level => <button key={level} onClick={() => onBulkMail(level, data.integrations)}>✉ VIP {level}</button>)}</div>
+            : <div className="vipBulkActions"><span>Envio de itens desligado: o QueryServer do MDBO ainda não entrega correio nem Cash Shop do painel.</span></div>}
         </article>
 
         {data.vipExpirySupported && <aside className="overviewSideStack">
@@ -137,7 +141,7 @@ export function PlayersOverview({ onAccounts, onRenew, onBulkMail }: { onAccount
         </article>) : <div className="vipEmptyState"><span>✓</span><div><strong>Nenhum vencimento futuro</strong><p>Não há assinaturas VIP com prazo para exibir.</p></div></div>}</div>
       </article>}
 
-      {data.vipExpirySupported && <footer className={`vipJobStatus ${data.lastRun?.status ?? "unknown"}`}><span className="jobStatusIcon">{data.lastRun?.status === "success" ? "✓" : data.lastRun?.status === "running" ? "↻" : "!"}</span><div><strong>Rotina automática de expiração</strong><p>{data.lastRun ? `Última execução em ${vipDate(data.lastRun.startedAt)} · ${data.lastRun.processed} contas processadas` : "Nenhuma execução registrada"}</p>{data.lastRun?.error && <small role="alert">{data.lastRun.error}</small>}{data.lastRun && Date.parse(data.updatedAt) - Date.parse(data.lastRun.startedAt) > 26 * 3600000 && <small role="alert">A rotina está atrasada. Verifique o agendador.</small>}</div><span className="jobSchedule"><small>PRÓXIMA ROTINA</small><strong>Todos os dias · 00h05</strong><em>Horário de São Paulo</em></span></footer>}
+      {data.vipExpirySupported && <footer className="vipJobStatus success"><span className="jobStatusIcon">✓</span><div><strong>Vencimento aplicado pelo servidor</strong><p>O MDBO calcula o VIP efetivo sozinho: uma conta vencida já fica sem VIP no jogo. A limpeza do banco (npm run vip:expire) é opcional.</p></div><span className="jobSchedule"><small>VALIDADE</small><strong>vip_expires_at</strong><em>Horário UTC</em></span></footer>}
     </>}
   </section>;
 }

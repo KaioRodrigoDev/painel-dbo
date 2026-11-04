@@ -71,7 +71,7 @@ async function assertDatabaseAvailable() {
   });
   if (!available) {
     throw new Error(
-      `O MySQL não está acessível em ${database.host}:${database.port}. Inicie o banco antes dos servidores do Dbo World.`,
+      `O MySQL não está acessível em ${database.host}:${database.port}. Inicie o banco antes dos servidores do MDBO.`,
     );
   }
 }

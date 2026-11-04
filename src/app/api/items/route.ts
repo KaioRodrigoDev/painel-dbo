@@ -15,6 +15,8 @@ const querySchema = z.object({
   itemType: z.coerce.number().int().min(0).max(255).optional(),
   rank: z.coerce.number().int().min(0).max(255).optional(),
   cashShop: z.enum(["0", "1"]).default("0"),
+  // 30 é o padrão dos seletores de item das outras telas; 40/80/120 são as opções do catálogo.
+  pageSize: z.enum(["30", "40", "80", "120"]).default("30"),
 });
 
 export async function GET(request: Request) {
@@ -29,6 +31,7 @@ export async function GET(request: Request) {
     itemType: url.searchParams.get("itemType") ?? undefined,
     rank: url.searchParams.get("rank") ?? undefined,
     cashShop: url.searchParams.get("cashShop") ?? "0",
+    pageSize: url.searchParams.get("pageSize") ?? "30",
   });
   if (!parsed.success) {
     return NextResponse.json({ error: "Consulta inválida." }, { status: 400 });
@@ -54,7 +57,7 @@ export async function GET(request: Request) {
       );
     });
 
-    const pageSize = 30;
+    const pageSize = Number(parsed.data.pageSize);
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     const page = Math.min(parsed.data.page, totalPages);
     const response: ItemCatalogResponse = {

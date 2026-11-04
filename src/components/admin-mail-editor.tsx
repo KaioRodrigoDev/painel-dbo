@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { AccountSummary, ItemCatalogEntry, ItemCatalogResponse } from "@/lib/types";
+import type { AccountSummary, GameIntegrations, ItemCatalogEntry, ItemCatalogResponse } from "@/lib/types";
 import { MailPackagePicker } from "@/components/mail-package-picker";
 
 type Channel = "cashshop" | "mail";
+const CHANNEL_OFF = {
+  cashshop: "O QueryServer do MDBO ainda não entrega itens do Cash Shop enviados pelo painel",
+  mail: "O QueryServer do MDBO ainda não entrega itens enviados pelo painel por correio",
+};
 type Recipient = { accountId: number; username: string; selectedCharId: number | null; characters: { charId: number; name: string; level: number; availableSlots: number; mailboxFull: boolean }[] };
 
-export function AdminMailEditor({ account, onClose, onSaved }: {
+export function AdminMailEditor({ account, integrations, onClose, onSaved }: {
   account: AccountSummary;
+  integrations?: GameIntegrations;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [channel, setChannel] = useState<Channel>("cashshop");
+  const [channel, setChannel] = useState<Channel>(integrations && !integrations.cashShop ? "mail" : "cashshop");
   const [packageId, setPackageId] = useState("");
   const [charId, setCharId] = useState(account.characters[0]?.charId ?? 0);
   const [message, setMessage] = useState("Presente enviado pela administração.");
@@ -69,7 +74,7 @@ export function AdminMailEditor({ account, onClose, onSaved }: {
   return <dialog ref={dialog} className="editorModal vipDialog mailEditorDialog" onCancel={event => { event.preventDefault(); if (!pending) onClose(); }} aria-labelledby="mail-editor-title">
     <div className="modalHeader"><div><div className="eyebrow">ENTREGA DE ITEM</div><h2 id="mail-editor-title">Enviar item</h2><p>{account.username} · Conta #{account.accountId} · VIP {account.vip}</p></div><button className="closeButton" onClick={onClose} disabled={pending} aria-label="Fechar">×</button></div>
     <form onSubmit={send}>
-      <div className="mailChannelSwitch"><button type="button" className={channel === "cashshop" ? "active" : ""} onClick={() => { setChannel("cashshop"); setSearch(""); setSelected(null); requestKey.current = crypto.randomUUID(); }}>Cash Shop<small>Todos os personagens</small></button><button type="button" className={channel === "mail" ? "active" : ""} onClick={() => { setChannel("mail"); setSearch(""); setSelected(null); requestKey.current = crypto.randomUUID(); }}>Correio<small>Personagem escolhido · item selado</small></button></div>
+      <div className="mailChannelSwitch"><button type="button" className={channel === "cashshop" ? "active" : ""} disabled={integrations ? !integrations.cashShop : false} title={integrations && !integrations.cashShop ? CHANNEL_OFF.cashshop : undefined} onClick={() => { setChannel("cashshop"); setSearch(""); setSelected(null); requestKey.current = crypto.randomUUID(); }}>Cash Shop<small>Todos os personagens</small></button><button type="button" className={channel === "mail" ? "active" : ""} disabled={integrations ? !integrations.mail : false} title={integrations && !integrations.mail ? CHANNEL_OFF.mail : undefined} onClick={() => { setChannel("mail"); setSearch(""); setSelected(null); requestKey.current = crypto.randomUUID(); }}>Correio<small>Personagem escolhido · item selado</small></button></div>
       {channel === "mail" && <MailPackagePicker selectedId={packageId} onSelect={id => { setPackageId(id); setSelected(null); setSearch(""); requestKey.current = crypto.randomUUID(); }} />}
       {!(channel === "mail" && packageId) && <><label className="mailField mailItemSearch">Item do catálogo<input value={search} onChange={event => { setSearch(event.target.value); setSelected(null); setResults([]); }} placeholder="Digite o nome ou TBLIDX" maxLength={80} autoComplete="off" required />{searching && <span className="mailSearchStatus">Buscando...</span>}
         {results.length > 0 && <div className="mailSearchResults">{results.map(item => <button type="button" key={item.tblidx} onClick={() => choose(item)}><span><strong>{item.name}</strong><small>TBLIDX {item.tblidx} · Rank {item.rank}</small></span><em>Máx. {Math.max(1, item.maxStack)}</em></button>)}</div>}
@@ -83,13 +88,14 @@ export function AdminMailEditor({ account, onClose, onSaved }: {
   </dialog>;
 }
 
-export function VipGroupMailEditor({ initialLevel, onClose, onSaved }: {
+export function VipGroupMailEditor({ initialLevel, integrations, onClose, onSaved }: {
   initialLevel: number;
+  integrations?: GameIntegrations;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
   const [vipLevel, setVipLevel] = useState(initialLevel);
-  const [channel, setChannel] = useState<Channel>("cashshop");
+  const [channel, setChannel] = useState<Channel>(integrations && !integrations.cashShop ? "mail" : "cashshop");
   const [recipients, setRecipients] = useState<Recipient[] | null>(null);
   const [packageId, setPackageId] = useState("");
   const [packageItemCount, setPackageItemCount] = useState(1);
@@ -149,7 +155,7 @@ export function VipGroupMailEditor({ initialLevel, onClose, onSaved }: {
   return <dialog ref={dialog} className="editorModal vipDialog mailEditorDialog" onCancel={event => { event.preventDefault(); if (!pending) onClose(); }} aria-labelledby="group-mail-title">
     <div className="modalHeader"><div><div className="eyebrow">ENTREGA VIP EM GRUPO</div><h2 id="group-mail-title">Enviar para um nível VIP</h2><p>Escolha o canal e confira os destinatários.</p></div><button className="closeButton" onClick={onClose} disabled={pending} aria-label="Fechar">×</button></div>
     <form onSubmit={send}>
-      <div className="mailChannelSwitch"><button type="button" className={channel === "cashshop" ? "active" : ""} onClick={() => { setChannel("cashshop"); setSearch(""); setSelected(null); setPreview(null); resetBatch(); }}>Cash Shop<small>Todos os personagens</small></button><button type="button" className={channel === "mail" ? "active" : ""} onClick={() => { setChannel("mail"); setSearch(""); setSelected(null); setRecipients(null); resetBatch(); }}>Correio<small>Personagem escolhido · item selado</small></button></div>
+      <div className="mailChannelSwitch"><button type="button" className={channel === "cashshop" ? "active" : ""} disabled={integrations ? !integrations.cashShop : false} title={integrations && !integrations.cashShop ? CHANNEL_OFF.cashshop : undefined} onClick={() => { setChannel("cashshop"); setSearch(""); setSelected(null); setPreview(null); resetBatch(); }}>Cash Shop<small>Todos os personagens</small></button><button type="button" className={channel === "mail" ? "active" : ""} disabled={integrations ? !integrations.mail : false} title={integrations && !integrations.mail ? CHANNEL_OFF.mail : undefined} onClick={() => { setChannel("mail"); setSearch(""); setSelected(null); setRecipients(null); resetBatch(); }}>Correio<small>Personagem escolhido · item selado</small></button></div>
       <label className="mailField">Grupo<select value={vipLevel} onChange={event => { setPreview(null); setRecipients(null); setVipLevel(Number(event.target.value)); resetBatch(); }}><option value={1}>Todos do VIP 1</option><option value={2}>Todos do VIP 2</option><option value={3}>Todos do VIP 3</option></select></label>
       <div className="groupMailPreview"><div><small>CONTAS VIP</small><strong>{channel === "mail" ? recipients?.length ?? "—" : preview?.total ?? "—"}</strong></div><div><small>RECEBERÃO</small><strong>{willReceive}</strong></div><div><small>DESTINO</small><strong>{channel === "mail" ? "Correio" : "Cash Shop"}</strong></div></div>
       {channel === "mail" && <MailPackagePicker selectedId={packageId} onSelect={(id, itemCount) => { setPackageId(id); setPackageItemCount(itemCount); setSelected(null); setSearch(""); resetBatch(); }} />}

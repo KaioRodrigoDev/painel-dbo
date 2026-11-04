@@ -41,9 +41,14 @@ export type AccountSummary = {
   characters: CharacterSummary[];
 };
 
+/** Ações que dependem de uma fila do QueryServer; desligadas quando o servidor não a lê. */
+export type GameIntegrations = { characterEdits: boolean; mail: boolean; cashShop: boolean };
+
 export type AccountsResponse = {
   accounts: AccountSummary[];
   vipExpirySupported: boolean;
+  /** Quais ações dependem de fila que o servidor realmente processa. */
+  integrations: GameIntegrations;
   page: number;
   pageSize: number;
   total: number;
@@ -723,6 +728,50 @@ export type SkillDraftsResponse = {
   drafts: SkillDraft[];
 };
 
+/** Mudança de um lote, com o valor já traduzido para leitura (nome de efeito, classes, segundos). */
+export type SkillBatchChange = SkillPublishChange & { beforeText: string; afterText: string };
+
+/** Uma skill com edição pendente. Só o rascunho mais recente dela entra no lote. */
+export type SkillBatchItem = {
+  draftId: string;
+  tblidx: number;
+  name: string;
+  iconName: string;
+  administrator: string;
+  updatedAt: string;
+  changes: SkillBatchChange[];
+  /** Algo impede esta skill de ir no lote; as demais seguem normalmente. */
+  blockingIssues: string[];
+  /** Versões antigas da mesma skill, descartadas junto quando o lote é aplicado. */
+  supersededDraftIds: string[];
+};
+
+export type SkillBatchPreview = {
+  items: SkillBatchItem[];
+  readyCount: number;
+  changeCount: number;
+  rdfPath: string;
+  defaultClientPackDirectory: string;
+  /** Muda se qualquer rascunho pronto ou o RDF mudar; nulo quando nada pode ser aplicado. */
+  token: string | null;
+};
+
+export type SkillBatchApplyResult = {
+  applied: { tblidx: number; name: string; changes: number }[];
+  skipped: { tblidx: number; name: string; reason: string }[];
+  server: { rdfPath: string; backupPath: string } | null;
+  client: { packFileName: string; packPath: string; backupPath: string | null } | null;
+};
+
+export type SkillBatchExportResult = {
+  exportId: string;
+  fileName: string;
+  size: number;
+  skills: number;
+  changes: number;
+  packFileName: string;
+};
+
 export type SkillPublishChange = {
   id: string;
   label: string;
@@ -772,4 +821,221 @@ export type DeliveriesResponse = {
   total: number;
   totalPages: number;
   counts: { total: number; claimed: number; available: number; failed: number };
+};
+
+// ---------------------------------------------------------------- Battle Pass
+
+/** 0 item, 1 título, 2 zeni, 3 cash da conta — mesma ordem de eBATTLEPASS_REWARD. */
+export type BattlePassRewardType = 0 | 1 | 2 | 3;
+/** 0 mob, 1 chefe, 2 quest, 3 TMQ, 4 dungeon (UD), 5 dia de login — eBATTLEPASS_OBJECTIVE. */
+export type BattlePassObjective = 0 | 1 | 2 | 3 | 4 | 5;
+
+export type BattlePassSeasonValues = {
+  seasonId: number;
+  name: string;
+  /** Unix, em segundos. */
+  startTime: number;
+  endTime: number;
+  maxLevel: number;
+  xpPerLevel: number;
+  /** 0 desliga a compra do Premium. */
+  premiumPrice: number;
+  dayOffsetMinutes: number;
+};
+
+export type BattlePassSeasonStatus = "live" | "scheduled" | "ended" | "inactive";
+
+export type BattlePassSeasonSummary = BattlePassSeasonValues & {
+  active: boolean;
+  status: BattlePassSeasonStatus;
+  missionCount: number;
+  rewardCount: number;
+  players: number;
+  premiumPlayers: number;
+  claims: number;
+  /** Já tem jogador, resgate ou operação: curva de XP, objetivos e prêmios entregues ficam travados. */
+  locked: boolean;
+};
+
+export type BattlePassRewardValues = {
+  level: number;
+  track: 0 | 1;
+  rewardType: BattlePassRewardType;
+  rewardId: number;
+  quantity: number;
+  titleDurationDays: number;
+  featured: boolean;
+};
+
+export type BattlePassReward = BattlePassRewardValues & {
+  itemName: string | null;
+  iconName: string | null;
+  claims: number;
+  /** Já resgatada por alguém: o valor não pode mudar, só o destaque. */
+  locked: boolean;
+};
+
+export type BattlePassMissionValues = {
+  missionId: number;
+  name: string;
+  releaseDay: number;
+  objective: BattlePassObjective;
+  targetId: number;
+  requiredAmount: number;
+  experience: number;
+  completionMobId: number;
+  transformation: number;
+  worldId: number;
+  areaX: number;
+  areaZ: number;
+  areaRadius: number;
+};
+
+export type BattlePassMission = BattlePassMissionValues & {
+  targetName: string | null;
+  completionMobName: string | null;
+  started: number;
+  completed: number;
+  released: boolean;
+  /** Já liberada ou com progresso: só o nome pode mudar. */
+  locked: boolean;
+};
+
+export type BattlePassSchema = {
+  /** As 7 tabelas da migração existem. */
+  ready: boolean;
+  missingTables: string[];
+  featured: boolean;
+  missionConditions: boolean;
+};
+
+export type BattlePassOverview = {
+  schema: BattlePassSchema;
+  seasons: BattlePassSeasonSummary[];
+  /** Mais de uma temporada com active=1 desliga o passe no servidor. */
+  activeConflict: boolean;
+  now: number;
+};
+
+export type BattlePassSeasonDetail = {
+  schema: BattlePassSchema;
+  season: BattlePassSeasonSummary;
+  rewards: BattlePassReward[];
+  missions: BattlePassMission[];
+  levelDistribution: { level: number; players: number }[];
+  /** O que faria o servidor recusar a configuração (e desligar o passe). */
+  issues: string[];
+  /** Pontos de atenção que não bloqueiam. */
+  warnings: string[];
+  now: number;
+};
+
+// ---------------------------------------------------------------- profissões (receitas das oficinas)
+
+export type ProfessionRecipeItem = {
+  tblidx: number;
+  name: string;
+  iconName: string;
+  /** byMax_Stack do item; null quando o item não existe na Table_Item_Data. */
+  maxStack: number | null;
+};
+
+export type ProfessionRecipe = {
+  id: number;
+  base: number;
+  specialization: number;
+  requiredLevel: number;
+  durationSeconds: number;
+  experience: number;
+  output: ProfessionRecipeItem;
+  outputCount: number;
+  outputDurability: number;
+  inputs: (ProfessionRecipeItem & { amount: number })[];
+  enabled: boolean;
+  /** A quantidade produzida tem de ser 1 (ferramenta com durabilidade e receitas de teste). */
+  outputCountFixed: boolean;
+  /** Lotes que a bancada deixa iniciar com os valores atuais. */
+  batches: number[];
+  /** Por que o QueryServer recusaria esta receita habilitada (vazio = aceita). */
+  issues: string[];
+  /** false: só existe no catálogo, entra no banco ao aplicar depois do build. */
+  inDatabase: boolean;
+  /** Está no miner-catalog.json: profissão, produto e materiais se mudam por lá (com build). */
+  identityEditable: boolean;
+  /** O que o catálogo diz e o banco ainda não tem (troca de produto, material ou profissão). */
+  pending: ProfessionRecipeIdentity | null;
+};
+
+/** Profissão, produto e materiais: a parte da receita compilada no servidor e no cliente. */
+export type ProfessionRecipeIdentity = {
+  specialization: number;
+  output: ProfessionRecipeItem;
+  outputCount: number;
+  outputDurability: number;
+  inputs: (ProfessionRecipeItem & { amount: number })[];
+};
+
+export type ProfessionCatalogItemKind = "material" | "tool" | "tool_repair" | "equipment_repair";
+
+export type ProfessionBuildPart = {
+  label: string;
+  /** Comando de build que atualiza esta parte. */
+  command: string;
+  files: string[];
+  /** Data do executável mais antigo da parte (ISO); null se algum não existe. */
+  builtAt: string | null;
+  stale: boolean;
+};
+
+export type ProfessionCatalogInfo = {
+  /** false: miner-catalog.json/NtlMinerRecipes.h não encontrados ao lado do servidor. */
+  available: boolean;
+  reason: string;
+  /** sha256 do miner-catalog.json lido: a gravação recusa se ele mudou desde então. */
+  version: string;
+  /** Itens do catálogo e o tipo de cada um (material, ferramenta, kit). */
+  items: { tblidx: number; kind: ProfessionCatalogItemKind; requiredLevel: number | null }[];
+  /** Produto e materiais de cada receita do catálogo, para conferir repetição e ciclo no editor. */
+  recipes: { id: number; output: number; inputs: number[] }[];
+  /** Data de NtlMinerRecipes.h (ISO). */
+  sourceChangedAt: string | null;
+  build: ProfessionBuildPart[];
+  buildNeeded: boolean;
+  /** Receitas cujo catálogo ainda não está no banco. */
+  pendingIds: number[];
+  /** Build em dia e há receitas a aplicar no banco. */
+  applyReady: boolean;
+};
+
+/** Profissão, produto e materiais pedidos no editor (vai para o miner-catalog.json). */
+export type ProfessionCatalogDraft = {
+  /** null = receita nova (o painel escolhe o próximo ID livre de 1001 a 1999). */
+  id: number | null;
+  specialization: number;
+  outputItem: number;
+  outputCount: number;
+  inputs: { item: number; count: number }[];
+  /** Só para receita nova; numa existente nível, tempo e XP continuam vindo do banco. */
+  requiredLevel: number;
+  durationSeconds: number;
+  experience: number;
+};
+
+/** O que o painel deixa mudar; o resto é a identidade compilada no servidor e no cliente. */
+export type ProfessionRecipeValues = {
+  requiredLevel: number;
+  durationSeconds: number;
+  experience: number;
+  outputCount: number;
+  amounts: number[];
+  enabled: boolean;
+};
+
+export type ProfessionRecipeOverview = {
+  /** false: a tabela profession_forge_recipe não existe neste banco. */
+  ready: boolean;
+  recipes: ProfessionRecipe[];
+  /** A Table_Item_Data foi lida (nomes, ícones e pilhas). */
+  itemsLoaded: boolean;
+  catalog: ProfessionCatalogInfo;
 };

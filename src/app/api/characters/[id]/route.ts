@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { writeAuditLog } from "@/lib/audit";
-import { requestCharacterUpdate } from "@/lib/db";
+import { AdminActionError, requestCharacterUpdate } from "@/lib/db";
 import { getAdminConfig } from "@/lib/env";
 import { authorizeApiRequest } from "@/lib/security";
 import { getAdminSession } from "@/lib/session";
@@ -72,6 +72,7 @@ export async function PATCH(
       message: "Solicitação registrada. O QueryServer aplicará os valores com segurança.",
     });
   } catch (error) {
+    if (error instanceof AdminActionError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Falha ao atualizar personagem", error);
     return NextResponse.json(
       { error: "Não foi possível atualizar o personagem." },

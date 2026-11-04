@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
-import { Orbitron, Roboto, Roboto_Mono } from "next/font/google";
+import { Inter, Orbitron, Roboto_Mono, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
 
-// Mesmas fontes do site público (dboworld-new-site), para o painel seguir a
-// mesma identidade visual. Roboto no corpo, Orbitron nos títulos, Roboto Mono
-// nos valores técnicos (IDs, caminhos, hex) que o painel exibe bastante.
-const roboto = Roboto({
+// Inter no corpo (legível nas tabelas densas do painel), Space Grotesk nos títulos,
+// Orbitron só na marca MDBO e Roboto Mono nos valores técnicos (IDs, caminhos, hex).
+const inter = Inter({
   subsets: ["latin"],
-  weight: ["400", "500", "700", "900"],
-  variable: "--font-roboto",
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-space-grotesk",
   display: "swap",
 });
 
@@ -28,15 +33,15 @@ const robotoMono = Roboto_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DBO World Admin",
-  description: "Painel administrativo do servidor Dbo World",
+  title: "MDBO Admin",
+  description: "Painel administrativo do servidor MDBO",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="pt-BR"
-      className={`${roboto.variable} ${orbitron.variable} ${robotoMono.variable}`}
+      className={`${inter.variable} ${spaceGrotesk.variable} ${orbitron.variable} ${robotoMono.variable}`}
     >
       <body>{children}</body>
     </html>

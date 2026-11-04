@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DerivedOptionField, isEmptyReference, PrerequisiteEditor, SkillReferencePicker, SystemEffectPicker, type ResolvedSkill } from "@/components/skill-reference-fields";
 
@@ -39,6 +39,12 @@ const FUNCTION_FLAGS = [
 const EFFECT_APPLY_LABELS = new Map(SYSTEM_EFFECT_APPLY_TYPE_OPTIONS.map((option) => [option.value, option.label]));
 
 function sameValue(left: SkillDraftValue | undefined, right: SkillDraftValue | undefined) { return JSON.stringify(left) === JSON.stringify(right); }
+
+// Campos que não têm bloco próprio: aparecem dentro do editor do campo principal.
+const COMPANION_FIELDS: Record<string, string[]> = { effectIds: ["effectIds", "effectTypes", "effectValues"], rpEffects: ["rpEffects", "rpEffectValues"] };
+const HIDDEN_FIELDS = new Set(["effectTypes", "effectValues", "rpEffectValues"]);
+const normalizeSearch = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const formatSeconds = (ms: number) => `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(ms / 1000)} s`;
 function displayValue(value: SkillDraftValue | undefined) {
   if (typeof value === "boolean") return value ? "Sim" : "Não";
   if (Array.isArray(value)) return value.join(", ");
@@ -52,6 +58,8 @@ function SkillBaseIcon({ skill, compact = false }: { skill: SkillCatalogEntry; c
   if (!skill.iconName || failed) return <span className={className}>Sem ícone</span>;
   return <span className={`${className} itemIconLoaded`}><Image src={`/api/skills/icons/${encodeURIComponent(skill.iconName)}`} alt={`Ícone de ${skill.name}`} width={compact ? 44 : 64} height={compact ? 44 : 64} unoptimized onError={() => setFailed(true)} /></span>;
 }
+
+const SKILL_CLASS_LABELS: Record<number, string> = { 0: "Passiva", 1: "Ativa", 2: "HTB" };
 
 function classesFromFlag(flag: number) {
   return CHARACTER_CLASSES.filter((_, index) => (flag & (1 << index)) !== 0);
@@ -83,7 +91,16 @@ function SkillRelationshipSummary({ skill, skills }: { skill: SkillCatalogEntry;
   </section>;
 }
 
-export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void; initialSkill?: SkillCatalogEntry }) {
+/**
+ * Valores com que o editor abre. Com um rascunho pendente, ele continua de onde parou em vez
+ * de recomeçar do RDF -- era isso que espalhava várias versões parciais da mesma skill.
+ */
+function initialEditorValues(skill: SkillCatalogEntry | undefined, pendingDraft: SkillDraft | undefined) {
+  if (!skill) return {};
+  return pendingDraft ? { ...editableValues(skill), ...pendingDraft.values } : editableValues(skill);
+}
+
+export function SkillDraftCreator({ onBack, initialSkill, pendingDraft }: { onBack: () => void; initialSkill?: SkillCatalogEntry; pendingDraft?: SkillDraft }) {
   const router = useRouter();
   const editMode = Boolean(initialSkill);
   const [skillClass, setSkillClass] = useState(initialSkill?.skillClass ?? 1);
@@ -92,7 +109,7 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
   const [bases, setBases] = useState<SkillCatalogEntry[]>([]);
   const [baseSkill, setBaseSkill] = useState<SkillCatalogEntry | null>(initialSkill ?? null);
   const [baseValues, setBaseValues] = useState<Record<string, SkillDraftValue>>(() => initialSkill ? editableValues(initialSkill) : {});
-  const [values, setValues] = useState<Record<string, SkillDraftValue>>(() => initialSkill ? editableValues(initialSkill) : {});
+  const [values, setValues] = useState<Record<string, SkillDraftValue>>(() => initialEditorValues(initialSkill, pendingDraft));
   const [drafts, setDrafts] = useState<SkillDraft[]>([]);
   const [loadingBases, setLoadingBases] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -112,6 +129,14 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
   const [fieldOptions, setFieldOptions] = useState<SkillFieldOptions>({});
   const [resolvedSkills, setResolvedSkills] = useState<Map<number, ResolvedSkill>>(new Map());
   const [resolvedEffects, setResolvedEffects] = useState<Map<number, SystemEffectEntry>>(new Map());
+  // Navegação dentro do formulário: filtro por texto, "só alterados" e grupos recolhidos.
+  const [fieldFilter, setFieldFilter] = useState("");
+  const [onlyChanged, setOnlyChanged] = useState(false);
+  const [closedGroups, setClosedGroups] = useState<Set<SkillCreationGroup>>(new Set());
+  // Valores no último salvamento, para saber se há algo ainda não salvo.
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(initialEditorValues(initialSkill, pendingDraft)));
+  const [lastSavedDraft, setLastSavedDraft] = useState<SkillDraft | null>(pendingDraft ?? null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const profile = getSkillCreationProfile(skillClass);
   const fields = useMemo(() => getFieldsForSkillClass(skillClass), [skillClass]);
@@ -119,6 +144,46 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
     group: group as SkillCreationGroup, label, fields: fields.filter((field) => field.group === group),
   })).filter((section) => section.fields.length), [fields]);
   const changedFields = useMemo(() => fields.filter((field) => !sameValue(values[field.id], baseValues[field.id])), [baseValues, fields, values]);
+  const changedIds = useMemo(() => new Set(changedFields.map((field) => field.id as string)), [changedFields]);
+  const fieldChanged = useCallback((id: string) => (COMPANION_FIELDS[id] ?? [id]).some((companion) => changedIds.has(companion)), [changedIds]);
+  const unsaved = changedFields.length > 0 && JSON.stringify(values) !== savedSnapshot;
+
+  const termo = normalizeSearch(fieldFilter.trim());
+  const filtering = Boolean(termo) || onlyChanged;
+  const visibleSections = useMemo(() => groupedFields.map((section) => ({
+    ...section,
+    changes: section.fields.filter((field) => changedIds.has(field.id)).length,
+    fields: section.fields.filter((field) => !HIDDEN_FIELDS.has(field.id)
+      && (!onlyChanged || fieldChanged(field.id))
+      && (!termo || normalizeSearch(`${field.label} ${field.sourceField} ${field.help ?? ""}`).includes(termo))),
+  })).filter((section) => section.fields.length), [changedIds, fieldChanged, groupedFields, onlyChanged, termo]);
+
+  function jumpToGroup(group: SkillCreationGroup) {
+    setClosedGroups((current) => { const next = new Set(current); next.delete(group); return next; });
+    window.requestAnimationFrame(() => document.getElementById(`skill-group-${group}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+  function setGroupOpen(group: SkillCreationGroup, open: boolean) {
+    setClosedGroups((current) => { const next = new Set(current); if (open) next.delete(group); else next.add(group); return next; });
+  }
+  function revertField(id: string) {
+    setValues((current) => ({ ...current, [id]: baseValues[id] }));
+  }
+  function leave() {
+    if (unsaved && !window.confirm("Há alterações que ainda não foram salvas como rascunho. Sair mesmo assim?")) return;
+    onBack();
+  }
+
+  // Ctrl+S salva o rascunho sem precisar ir até o botão.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const loadDrafts = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch("/api/skill-drafts", { signal, cache: "no-store" });
@@ -220,11 +285,15 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
     const completeBase = getSkillCreationBaseValues(selected);
     const applicable = Object.fromEntries(fields.map((field) => [field.id, completeBase[field.id]])) as Record<string, SkillDraftValue>;
     setBaseValues(applicable);
-    setValues({
+    const iniciais = {
       ...applicable, tblidx: 0, skillClass, classFlag: 1 << characterClass,
       name: `${selected.name} - Nova`,
       internalName: `${selected.internalName || `SKILL_${selected.tblidx}`}_NEW`.slice(0, 40),
-    });
+    };
+    setValues(iniciais);
+    // Os ajustes automáticos da clonagem não contam como "não salvo"; só o que vier depois.
+    setSavedSnapshot(JSON.stringify(iniciais));
+    setLastSavedDraft(null);
   }
 
   function changeField(metadata: SkillCreationField, rawValue: string | boolean) {
@@ -240,9 +309,12 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
     setValues((current) => ({ ...current, ...nextValues }));
   }
 
+  const canSave = Boolean(baseSkill) && !saving && Number(values.tblidx) >= 1 && Boolean(String(values.name ?? "").trim()) && !(editMode && changedFields.length === 0);
+
   async function saveDraft(event: FormEvent) {
     event.preventDefault();
-    if (!baseSkill) return;
+    // O Ctrl+S chega aqui mesmo com o botão desabilitado, então a regra do botão é refeita.
+    if (!baseSkill || !canSave) return;
     setSaving(true); setError(""); setMessage("");
     try {
       const response = await fetch("/api/skill-drafts", {
@@ -251,7 +323,11 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
       });
       const body = (await response.json().catch(() => ({}))) as { draft?: SkillDraft; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Não foi possível salvar o rascunho.");
-      setMessage(`${editMode ? "Edição" : "Criação"} da skill ${body.draft?.newTblidx} salva como rascunho. Nenhum arquivo do jogo foi alterado.`);
+      setMessage(editMode
+        ? `Skill ${body.draft?.newTblidx} salva no lote de alterações. Volte ao catálogo e use "Revisar lote" para exportar ou aplicar junto com as outras.`
+        : `Criação da skill ${body.draft?.newTblidx} salva como rascunho. Nenhum arquivo do jogo foi alterado.`);
+      setSavedSnapshot(JSON.stringify(values));
+      setLastSavedDraft(body.draft ?? null);
       await loadDrafts();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível salvar o rascunho."); }
     finally { setSaving(false); }
@@ -299,52 +375,126 @@ export function SkillDraftCreator({ onBack, initialSkill }: { onBack: () => void
         ].filter(Boolean).join(" "),
       );
       setPackDownloadDraftId(clientPack?.download ? clientPack.download.draftId : "");
-      setPublishPreview(null); setPublishAcknowledged(false);
+      setPublishPreview(null); setPublishAcknowledged(false); setLastSavedDraft(null);
       await loadDrafts();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível publicar a skill."); }
     finally { setPublishing(false); }
   }
 
+  const draftsDestaSkill = editMode && baseSkill ? drafts.filter((draft) => draft.newTblidx === baseSkill.tblidx) : drafts;
+  const outrosDrafts = editMode && baseSkill ? drafts.filter((draft) => draft.newTblidx !== baseSkill.tblidx) : [];
+  const renderDraft = (draft: SkillDraft) => <article key={draft.id} className={draft.status === "published" ? "published" : ""}><div><strong>{draft.name}</strong><span>{draft.operation === "edit" ? "Edição" : "Criação"} · #{draft.newTblidx} · {draft.profile} · {CHARACTER_CLASSES[draft.characterClass] ?? `Classe ${draft.characterClass}`}</span></div><small>Base #{draft.baseTblidx} · {draft.changedFields.length} alterações · {new Date(draft.updatedAt).toLocaleString("pt-BR")}</small>{draft.status === "published" ? <div className="draftPublishedStatus"><strong>Publicado no RDF</strong><span>{draft.publishedAt ? new Date(draft.publishedAt).toLocaleString("pt-BR") : ""}</span></div> : <button className="publishDraftButton" type="button" disabled={validatingDraftId === draft.id} onClick={() => void validatePublication(draft)}>{validatingDraftId === draft.id ? "Validando..." : "Validar e publicar"}</button>}</article>;
+
   return <div className="itemDraftCreator">
     <div className="draftCreatorHeader">
-      <div><div className="eyebrow">FASE 1 · RASCUNHO SEGURO</div><h2>{editMode ? "Editar habilidade" : "Criar habilidade"}</h2><p>{editMode ? "Altere os campos da habilidade existente e revise somente as diferenças." : "Escolha uma categoria e clone uma habilidade estruturalmente compatível."}</p></div>
-      <button className="catalogClearButton" type="button" onClick={onBack}>← Voltar ao catálogo</button>
+      <div><div className="eyebrow">{editMode ? "EDITAR HABILIDADE" : "CRIAR HABILIDADE"}</div><h2>{editMode ? "Editar habilidade" : "Criar habilidade"}</h2><p>{!editMode ? "Escolha uma categoria e clone uma habilidade estruturalmente compatível."
+        : pendingDraft ? `Continuando o rascunho pendente desta skill (salvo em ${new Date(pendingDraft.updatedAt).toLocaleString("pt-BR")}). Ele faz parte do lote de alterações.`
+        : "Salvar adiciona esta skill ao lote de alterações; nada muda no jogo até você aplicar ou exportar."}</p></div>
+      <button className="catalogClearButton" type="button" onClick={leave}>← Voltar ao catálogo</button>
     </div>
 
-    <div className="draftSafetyBanner"><strong>Nenhuma publicação automática</strong><span>Salvar cria somente um JSON auditável de {editMode ? "edição" : "criação"}. RDF, textos, ícones, cliente e servidor permanecem intactos.</span></div>
+    {/* Categoria, classe e base só servem para criar; na edição ficavam desativadas ocupando a tela. */}
+    {!editMode && <>
+      <div className="draftSafetyBanner"><strong>Nenhuma publicação automática</strong><span>Salvar cria somente um JSON auditável de criação. RDF, textos, ícones, cliente e servidor permanecem intactos.</span></div>
+      <section className="draftSetupGrid skillDraftSetupGrid">
+        <label><span>1. Categoria</span><select value={skillClass} onChange={(event) => changeCategory(event.target.value)}>{SKILL_CREATION_PROFILES.map((item) => <option key={item.skillClass} value={item.skillClass}>{item.label} ({item.skillClass})</option>)}</select></label>
+        <label><span>2. Classe de referência</span><select value={characterClass} onChange={(event) => changeCharacterClass(event.target.value)}>{CHARACTER_CLASSES.map((name, index) => <option key={name} value={index}>{name}</option>)}</select></label>
+        <label><span>Buscar skill-base</span><input value={baseSearch} onChange={(event) => setBaseSearch(event.target.value)} placeholder="Nome ou TBLIDX" maxLength={80} /></label>
+        <label><span>3. Skill-base ({bases.length} disponíveis)</span><select value={baseSkill?.tblidx ?? ""} onChange={(event) => selectBase(event.target.value)} disabled={loadingBases}><option value="">{loadingBases ? "Carregando todas..." : "Selecione uma habilidade"}</option>{bases.map((skill) => <option key={skill.tblidx} value={skill.tblidx}>#{skill.tblidx} · {skill.name} · Grade {skill.grade}</option>)}</select></label>
+      </section>
+    </>}
 
-    <section className="draftSetupGrid skillDraftSetupGrid">
-      <label><span>1. Categoria</span><select value={skillClass} disabled={editMode} onChange={(event) => changeCategory(event.target.value)}>{SKILL_CREATION_PROFILES.map((item) => <option key={item.skillClass} value={item.skillClass}>{item.label} ({item.skillClass})</option>)}</select></label>
-      <label><span>2. Classe de referência</span><select value={characterClass} disabled={editMode} onChange={(event) => changeCharacterClass(event.target.value)}>{CHARACTER_CLASSES.map((name, index) => <option key={name} value={index}>{name}</option>)}</select></label>
-      <label><span>Buscar skill-base</span><input value={baseSearch} disabled={editMode} onChange={(event) => setBaseSearch(event.target.value)} placeholder="Nome ou TBLIDX" maxLength={80} /></label>
-      <label><span>3. Skill-base ({bases.length} disponíveis)</span><select value={baseSkill?.tblidx ?? ""} onChange={(event) => selectBase(event.target.value)} disabled={editMode || loadingBases}><option value="">{loadingBases ? "Carregando todas..." : "Selecione uma habilidade"}</option>{initialSkill && !bases.some((skill) => skill.tblidx === initialSkill.tblidx) && <option value={initialSkill.tblidx}>#{initialSkill.tblidx} · {initialSkill.name} · Grade {initialSkill.grade}</option>}{bases.map((skill) => <option key={skill.tblidx} value={skill.tblidx}>#{skill.tblidx} · {skill.name} · Grade {skill.grade}</option>)}</select></label>
-    </section>
+    {baseSkill && (editMode
+      ? <section className="skillEditHero">
+          <SkillBaseIcon skill={baseSkill} />
+          <div className="skillEditHeroInfo">
+            <strong>{baseSkill.name}</strong>
+            <span>#{baseSkill.tblidx} · {baseSkill.iconName || "sem ícone"}</span>
+            <div className="skillEditHeroBadges">
+              <span className="catalogBadge">{SKILL_CLASS_LABELS[baseSkill.skillClass] ?? `Categoria ${baseSkill.skillClass}`}</span>
+              <span className="rankBadge">Grade {baseSkill.grade}</span>
+              <span className="rankBadge">{fields.length} campos</span>
+            </div>
+          </div>
+          <SkillRelationshipSummary skill={baseSkill} skills={bases} />
+        </section>
+      : <>
+          <section className="skillBaseCard">
+            <SkillBaseIcon skill={baseSkill} />
+            <div><div className="eyebrow">SKILL-BASE SELECIONADA</div><strong>{baseSkill.name}</strong><span>#{baseSkill.tblidx} · {baseSkill.iconName || "Sem ícone informado"}</span><small>A nova habilidade começa usando este mesmo ícone. O campo Ícone pode ser alterado depois.</small></div>
+          </section>
+          <SkillRelationshipSummary skill={baseSkill} skills={bases} />
+        </>)}
 
-    {baseSkill && <section className="skillBaseCard">
-      <SkillBaseIcon skill={baseSkill} />
-      <div><div className="eyebrow">{editMode ? "SKILL EM EDIÇÃO" : "SKILL-BASE SELECIONADA"}</div><strong>{baseSkill.name}</strong><span>#{baseSkill.tblidx} · {baseSkill.iconName || "Sem ícone informado"}</span><small>{editMode ? "O TBLIDX original fica bloqueado; os demais campos podem ser comparados com a versão atual." : "A nova habilidade começa usando este mesmo ícone. O campo Ícone pode ser alterado depois."}</small></div>
-    </section>}
-    {baseSkill && <SkillRelationshipSummary skill={baseSkill} skills={bases} />}
-
-    {profile && <div className="profileSummary"><div><strong>{profile.label}</strong><span>{profile.notes}</span></div><span>{fields.length} campos aplicáveis</span></div>}
+    {!editMode && profile && <div className="profileSummary"><div><strong>{profile.label}</strong><span>{profile.notes}</span></div><span>{fields.length} campos aplicáveis</span></div>}
     {error && <div className="errorBanner"><strong>Não foi possível continuar</strong><span>{error}</span></div>}
     {message && <div className="successBanner"><strong>Rascunho registrado</strong><span>{message}</span>{packDownloadDraftId && <a className="packDownloadLink" href={`/api/client-pack?draft=${encodeURIComponent(packDownloadDraftId)}`} download>Baixar pack do cliente</a>}</div>}
 
-    {!baseSkill ? <div className="draftEmptyState">Selecione uma skill-base para abrir os campos da categoria.</div> : <form onSubmit={saveDraft}>
+    {!baseSkill ? <div className="draftEmptyState">Selecione uma skill-base para abrir os campos da categoria.</div> : <form ref={formRef} onSubmit={saveDraft}>
       <div className="draftWorkspace">
-        <div className="draftFields">{groupedFields.map((section, index) => <details className="draftFieldGroup" open={index < 7 || section.group === "advanced"} key={section.group}><summary><div><strong>{section.label}</strong><small>{GROUP_HELP[section.group]}</small></div><span>{section.fields.length} campos</span></summary><div className="draftFieldGrid">{section.fields.map((metadata) => <SkillDraftField key={metadata.id} metadata={metadata} value={values[metadata.id]} allValues={values} changed={!sameValue(values[metadata.id], baseValues[metadata.id])} relatedSkills={bases} requiredCharacterClass={editMode ? -1 : characterClass} lockTblidx={editMode} onChange={(value) => changeField(metadata, value)} onChangeMany={changeFields} resolvedSkills={resolvedSkills} resolvedEffects={resolvedEffects} derivedOptions={fieldOptions[metadata.id]} onResolveSkill={(skill) => setResolvedSkills((current) => new Map(current).set(skill.tblidx, skill))} onResolveEffect={(effect) => setResolvedEffects((current) => new Map(current).set(effect.tblidx, effect))} />)}</div></details>)}</div>
+        <div className="draftFields">
+          {/* Barra que acompanha a rolagem: filtro, "só alterados" e atalho para cada grupo. */}
+          <div className="skillFieldToolbar">
+            <div className="skillFieldToolbarRow">
+              <div className="searchInputWrap"><span aria-hidden="true">⌕</span>
+                <input value={fieldFilter} onChange={(event) => setFieldFilter(event.target.value)} placeholder="Filtrar campos: cooldown, EP, alvo, ícone…" maxLength={60} aria-label="Filtrar campos" /></div>
+              <label className={`skillOnlyChanged${onlyChanged ? " on" : ""}`}>
+                <input type="checkbox" checked={onlyChanged} onChange={(event) => setOnlyChanged(event.target.checked)} />
+                <span>Só alterados <b>{changedFields.length}</b></span></label>
+              <button type="button" className="catalogClearButton" disabled={filtering}
+                onClick={() => setClosedGroups(closedGroups.size ? new Set() : new Set(groupedFields.map((section) => section.group)))}>
+                {closedGroups.size ? "Expandir tudo" : "Recolher tudo"}</button>
+            </div>
+            <nav className="skillGroupNav" aria-label="Grupos de campos">
+              {visibleSections.map((section) => <button key={section.group} type="button" onClick={() => jumpToGroup(section.group)}>
+                {section.label}{section.changes > 0 && <b>{section.changes}</b>}</button>)}
+            </nav>
+          </div>
+
+          {visibleSections.map((section) => <details id={`skill-group-${section.group}`} className="draftFieldGroup" key={section.group}
+            open={filtering || !closedGroups.has(section.group)}
+            onToggle={(event) => { if (!filtering) setGroupOpen(section.group, event.currentTarget.open); }}>
+            <summary><div><strong>{section.label}</strong><small>{GROUP_HELP[section.group]}</small></div>
+              <span>{section.changes > 0 && <b className="groupChangeCount">{section.changes} alterad{section.changes === 1 ? "o" : "os"}</b>}{section.fields.length} campos</span></summary>
+            <div className="draftFieldGrid">{section.fields.map((metadata) => <SkillDraftField key={metadata.id} metadata={metadata} value={values[metadata.id]} allValues={values} changed={fieldChanged(metadata.id)} relatedSkills={bases} requiredCharacterClass={editMode ? -1 : characterClass} lockTblidx={editMode} onChange={(value) => changeField(metadata, value)} onChangeMany={changeFields} resolvedSkills={resolvedSkills} resolvedEffects={resolvedEffects} derivedOptions={fieldOptions[metadata.id]} onResolveSkill={(skill) => setResolvedSkills((current) => new Map(current).set(skill.tblidx, skill))} onResolveEffect={(effect) => setResolvedEffects((current) => new Map(current).set(effect.tblidx, effect))} />)}</div>
+          </details>)}
+          {!visibleSections.length && <div className="draftEmptyState">{onlyChanged && !termo ? "Nenhum campo alterado ainda." : "Nenhum campo corresponde ao filtro."}</div>}
+        </div>
+
         <aside className="draftDiffPanel">
-          <div className="skillDraftPreviewIdentity"><SkillBaseIcon skill={baseSkill} compact /><span>Ícone herdado da base</span></div>
-          <div><div className="eyebrow">PRÉ-VISUALIZAÇÃO</div><h3>{String(values.name || "Nova habilidade")}</h3><p>{editMode ? `Editando #${displayValue(values.tblidx)}` : `Nova #${displayValue(values.tblidx)} baseada em #${baseSkill.tblidx}`}</p></div>
-          <strong>{changedFields.length} alterações</strong>
-          <div className="draftDiffList">{changedFields.map((metadata) => <div key={metadata.id}><span>{metadata.label}</span><small>{describeFieldValue(metadata.id, baseValues[metadata.id], resolvedSkills, resolvedEffects)} →</small><strong>{describeFieldValue(metadata.id, values[metadata.id], resolvedSkills, resolvedEffects)}</strong></div>)}</div>
+          <div className="skillDraftPreviewIdentity">
+            {/* key: um ícone que falhou não pode impedir o próximo de aparecer. */}
+            <SkillBaseIcon key={String(values.iconName ?? "")} skill={{ ...baseSkill, iconName: String(values.iconName ?? baseSkill.iconName) }} compact />
+            <div><div className="eyebrow">PRÉ-VISUALIZAÇÃO</div><h3>{String(values.name || "Nova habilidade")}</h3>
+              <p>{editMode ? `Editando #${displayValue(values.tblidx)}` : `Nova #${displayValue(values.tblidx)} baseada em #${baseSkill.tblidx}`}</p></div>
+          </div>
+          <div className="draftDiffHeader">
+            <strong>{changedFields.length} alteraç{changedFields.length === 1 ? "ão" : "ões"}</strong>
+            {editMode && changedFields.length > 0 && <button type="button" className="skillRevertAll" onClick={() => setValues({ ...baseValues })}>Desfazer tudo</button>}
+          </div>
+          <div className="draftDiffList">{changedFields.map((metadata) => <div key={metadata.id}>
+            <header><span>{metadata.label}</span>
+              <button type="button" className="skillRevertField" title="Voltar este campo ao valor original" aria-label={`Desfazer ${metadata.label}`} onClick={() => revertField(metadata.id)}>↺</button></header>
+            <small>{describeFieldValue(metadata.id, baseValues[metadata.id], resolvedSkills, resolvedEffects)}</small>
+            <strong>→ {describeFieldValue(metadata.id, values[metadata.id], resolvedSkills, resolvedEffects)}</strong>
+          </div>)}</div>
           {!changedFields.length && <p className="muted">Nenhum campo foi alterado.</p>}
-          <button className="primaryButton" disabled={saving || Number(values.tblidx) < 1 || !String(values.name ?? "").trim() || (editMode && changedFields.length === 0)}>{saving ? "Salvando..." : editMode ? "Salvar edição como rascunho" : "Salvar rascunho JSON"}</button>
+          {unsaved ? <p className="draftSaveState unsaved">● Alterações não salvas <kbd>Ctrl S</kbd></p>
+            : lastSavedDraft ? <p className="draftSaveState">✓ Rascunho salvo</p> : null}
+          <button className="primaryButton" disabled={!canSave}>{saving ? "Salvando..." : editMode ? "Salvar edição como rascunho" : "Salvar rascunho JSON"}</button>
+          {/* O passo seguinte fica aqui mesmo, sem precisar procurar o rascunho no fim da página. */}
+          {lastSavedDraft && !unsaved && lastSavedDraft.status !== "published" && <button className="publishDraftButton" type="button"
+            disabled={validatingDraftId === lastSavedDraft.id} onClick={() => void validatePublication(lastSavedDraft)}>
+            {validatingDraftId === lastSavedDraft.id ? "Validando..." : "Validar e publicar este rascunho"}</button>}
         </aside>
       </div>
     </form>}
 
-    <section className="savedDrafts"><div className="serverSectionHeader"><div><strong>Rascunhos salvos</strong><span>Valide as diferenças antes de publicar no RDF do servidor</span></div><span>{drafts.length}</span></div>{drafts.length === 0 ? <p className="muted">Nenhum rascunho criado.</p> : <div className="savedDraftGrid">{drafts.map((draft) => <article key={draft.id} className={draft.status === "published" ? "published" : ""}><div><strong>{draft.name}</strong><span>{draft.operation === "edit" ? "Edição" : "Criação"} · #{draft.newTblidx} · {draft.profile} · {CHARACTER_CLASSES[draft.characterClass] ?? `Classe ${draft.characterClass}`}</span></div><small>Base #{draft.baseTblidx} · {draft.changedFields.length} alterações · {new Date(draft.updatedAt).toLocaleString("pt-BR")}</small>{draft.status === "published" ? <div className="draftPublishedStatus"><strong>Publicado no RDF</strong><span>{draft.publishedAt ? new Date(draft.publishedAt).toLocaleString("pt-BR") : ""}</span></div> : <button className="publishDraftButton" type="button" disabled={validatingDraftId === draft.id} onClick={() => void validatePublication(draft)}>{validatingDraftId === draft.id ? "Validando..." : "Validar e publicar"}</button>}</article>)}</div>}</section>
+    <section className="savedDrafts">
+      <div className="serverSectionHeader"><div><strong>{editMode ? "Rascunhos desta skill" : "Rascunhos salvos"}</strong><span>Valide as diferenças antes de publicar no RDF do servidor</span></div><span>{draftsDestaSkill.length}</span></div>
+      {draftsDestaSkill.length === 0 ? <p className="muted">{editMode ? "Nenhum rascunho desta skill ainda." : "Nenhum rascunho criado."}</p> : <div className="savedDraftGrid">{draftsDestaSkill.map(renderDraft)}</div>}
+      {outrosDrafts.length > 0 && <details className="otherDrafts"><summary>Rascunhos de outras skills ({outrosDrafts.length})</summary><div className="savedDraftGrid">{outrosDrafts.map(renderDraft)}</div></details>}
+    </section>
     {publishPreview && <div className="modalBackdrop" role="presentation" onMouseDown={(event) => { if (!publishing && event.target === event.currentTarget) setPublishPreview(null); }}><section className="editorModal skillPublishModal" role="dialog" aria-modal="true" aria-labelledby="skill-publish-title"><div className="modalHeader"><div><div className="eyebrow">CONFIRMAÇÃO OBRIGATÓRIA</div><h2 id="skill-publish-title">Publicar {publishPreview.skillName}</h2><p>Skill #{publishPreview.tblidx}</p></div><button className="closeButton" disabled={publishing} onClick={() => setPublishPreview(null)} aria-label="Fechar">×</button></div><div className="publishDestination"><small>Arquivo que será alterado</small><code>{publishPreview.rdfPath}</code></div><div className="publishChangeList"><div className="publishChangeHeader"><strong>Mudanças confirmadas</strong><span>{publishPreview.changes.length}</span></div>{publishPreview.changes.map((change) => <div key={change.id}><span><strong>{change.label}</strong><small>{change.sourceField}</small></span><code>{describeFieldValue(change.id, change.before, resolvedSkills, resolvedEffects)}</code><b>→</b><code>{describeFieldValue(change.id, change.after, resolvedSkills, resolvedEffects)}</code></div>)}</div>{publishPreview.blockingIssues.length > 0 && <div className="errorBanner"><strong>Publicação bloqueada</strong><span>{publishPreview.blockingIssues.join(" ")}</span></div>}<div className="publishWarnings">{publishPreview.warnings.map((warning) => <span key={warning}>⚠ {warning}</span>)}</div><div className="publishClientOptions"><strong>Cópia do cliente</strong><label><input type="checkbox" checked={replaceClientPack} onChange={(event) => setReplaceClientPack(event.target.checked)} /><span>Substituir automaticamente o pack do cliente</span></label><label><input type="checkbox" checked={prepareDownload} onChange={(event) => setPrepareDownload(event.target.checked)} /><span>Gerar o pack corrigido para download</span></label>{(replaceClientPack || prepareDownload) && <label className="publishPackPath"><span>Pasta pack do cliente</span><input type="text" value={clientPackDirectory} onChange={(event) => setClientPackDirectory(event.target.value)} spellCheck={false} placeholder="C:\\...\\ClientRuntime_RealBase\\pack" /></label>}{!replaceClientPack && !prepareDownload && <small className="muted">Sem nenhuma das duas, só o RDF do servidor muda e o cliente continua com o valor antigo.</small>}</div>{publishPreview.confirmationToken && <label className="publishAcknowledgement"><input type="checkbox" checked={publishAcknowledged} onChange={(event) => setPublishAcknowledged(event.target.checked)} /><span>Revisei os valores acima e confirmo a gravação no RDF do servidor.</span></label>}<div className="modalActions"><button className="catalogClearButton" type="button" disabled={publishing} onClick={() => setPublishPreview(null)}>Cancelar</button><button className="dangerPublishButton" type="button" disabled={publishing || !publishAcknowledged || !publishPreview.confirmationToken} onClick={() => void confirmPublication()}>{publishing ? "Publicando..." : "Confirmar publicação no RDF"}</button></div></section></div>}
   </div>;
 }
@@ -388,12 +538,17 @@ function SkillDraftField({ metadata, value, allValues, changed, relatedSkills, r
   if (derivedOptions?.length) return <DerivedOptionField label={metadata.label} sourceField={metadata.sourceField} help={metadata.help} value={Number(value ?? 0)} options={derivedOptions} changed={changed} onChange={onChange} />;
   if (metadata.id === "classFlag") return <ClassFlagField metadata={metadata} value={Number(value ?? 0)} changed={changed} requiredCharacterClass={requiredCharacterClass} onChange={onChange} />;
   if (metadata.id === "functionFlag") return <FunctionFlagField metadata={metadata} value={Number(value ?? 0)} changed={changed} onChange={onChange} />;
-  if (metadata.control === "checkbox") return <label className={`${className} checkboxField`}><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /><span><strong>{metadata.label}</strong><small>{metadata.sourceField}</small></span></label>;
-  if (metadata.control === "select" && metadata.options) return <label className={className}><span>{metadata.label}</span><select value={Number(value ?? 0)} disabled={metadata.locked} onChange={(event) => onChange(event.target.value)}>{metadata.options.map((option) => <option key={option.value} value={option.value}>{option.label} ({option.value})</option>)}</select><small>{metadata.sourceField}{metadata.locked ? " · definido pela categoria" : ""}</small></label>;
+  // Nome técnico do RDF à direita do rótulo, discreto: útil para conferir, sem disputar
+  // atenção com a explicação do campo.
+  const labelRow = <span className="fieldLabelRow"><span>{metadata.label}{metadata.required ? " *" : ""}</span><code title="Campo no RDF">{metadata.sourceField}</code></span>;
+  if (metadata.control === "checkbox") return <label className={`${className} checkboxField`}><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /><span><strong>{metadata.label}</strong><small>{metadata.sourceField}{metadata.help ? ` · ${metadata.help}` : ""}</small></span></label>;
+  if (metadata.control === "select" && metadata.options) return <label className={className}>{labelRow}<select value={Number(value ?? 0)} disabled={metadata.locked} onChange={(event) => onChange(event.target.value)}>{metadata.options.map((option) => <option key={option.value} value={option.value}>{option.label} ({option.value})</option>)}</select>{(metadata.help || metadata.locked) && <small>{metadata.locked ? "Definido pela categoria." : metadata.help}</small>}</label>;
   const inputType = metadata.control === "text" || metadata.control === "number-list" ? "text" : "number";
   const relation = relationText(metadata, value, relatedSkills);
-  return <label className={className}><span>{metadata.label}{metadata.required ? " *" : ""}</span>{metadata.id === "description" ? <textarea value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} maxLength={2000} /> : <input type={inputType} value={displayValue(value) === "—" ? "" : displayValue(value)} min={metadata.min} max={metadata.max} step={metadata.step} maxLength={metadata.control === "text" ? (metadata.id === "internalName" ? 40 : metadata.id === "iconName" ? 32 : 64) : undefined} disabled={lockTblidx && metadata.id === "tblidx"} onChange={(event) => onChange(event.target.value)} required={metadata.required} />}
-    <small>{metadata.control === "number-list" ? "Valores separados por vírgula · " : ""}{metadata.sourceField}{metadata.help ? ` · ${metadata.help}` : ""}</small>{relation && <span className="fieldRelationHint">{relation}</span>}</label>;
+  // Tempos ficam em milissegundos no RDF; a conversão ao lado evita a conta de cabeça.
+  const emSegundos = metadata.id.endsWith("Ms") && typeof value === "number" ? (value ? formatSeconds(value) : "instantâneo") : "";
+  return <label className={className}>{labelRow}<span className="fieldInputRow">{metadata.id === "description" ? <textarea value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} maxLength={2000} /> : <input type={inputType} value={displayValue(value) === "—" ? "" : displayValue(value)} min={metadata.min} max={metadata.max} step={metadata.step} maxLength={metadata.control === "text" ? (metadata.id === "internalName" ? 40 : metadata.id === "iconName" ? 32 : 64) : undefined} disabled={lockTblidx && metadata.id === "tblidx"} onChange={(event) => onChange(event.target.value)} required={metadata.required} />}{emSegundos && <em className="fieldUnitHint">= {emSegundos}</em>}</span>
+    {(metadata.help || metadata.control === "number-list") && <small>{metadata.control === "number-list" ? "Valores separados por vírgula. " : ""}{metadata.help}</small>}{relation && <span className="fieldRelationHint">{relation}</span>}</label>;
 }
 
 /**
@@ -474,12 +629,8 @@ function relationText(metadata: SkillCreationField, value: SkillDraftValue | und
   }
   if (["rootSkillId", "nextSkillId"].includes(metadata.id) && typeof value === "number") return findSkillName(skills, value);
   if (metadata.id === "prerequisiteSkillIds" && Array.isArray(value)) return value.map((id) => findSkillName(skills, id)).join(" | ");
+  // SP, LP, EP, RP e VP não ganham dica: ela só repetia o número que já está no campo.
   if (metadata.id === "requiredZenny" && typeof value === "number") return value === 0 ? "Aprendizado gratuito." : `${new Intl.NumberFormat("pt-BR").format(value)} Zeni para aprender.`;
-  if (metadata.id === "requiredSp" && typeof value === "number") return `${value} ponto(s) de skill para aprender.`;
-  if (metadata.id === "requiredLp" && typeof value === "number") return `${new Intl.NumberFormat("pt-BR").format(value)} LP consumido por uso.`;
-  if (metadata.id === "requiredEp" && typeof value === "number") return `${new Intl.NumberFormat("pt-BR").format(value)} EP consumido por uso.`;
-  if (metadata.id === "requiredRpBalls" && typeof value === "number") return value ? `Exige ${value} bola(s) de RP.` : "Não exige bolas de RP.";
-  if (metadata.id === "requiredVp" && typeof value === "number") return value ? `${value} VP consumido; normalmente relacionado a mascotes.` : "Sem custo de VP.";
   if (metadata.id === "useType" && typeof value === "number") return `Valor ${value} herdado por ${skills.filter((skill) => skill.useType === value).length} skills carregadas. Preserve se não houver regra específica.`;
   if (metadata.id === "restrictionRuleFlag" && typeof value === "number") return value === 0 ? "Nenhuma regra técnica adicional." : `Máscara ativa ${value} (0x${value.toString(16).toUpperCase()}); altere somente após mapear os bits.`;
   return "";

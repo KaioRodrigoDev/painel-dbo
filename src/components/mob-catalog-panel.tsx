@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { DropEditorPage } from "@/components/drop-editor";
 import { MobSkillsPage } from "@/components/mob-skill-editor";
 import type { MobCatalogEntry, MobCatalogResponse, MobDropGroup, MobDropItem, MobDropsResponse } from "@/lib/types";
+import { Pagination } from "@/components/pagination";
 
 const GRADE_NAMES: Record<number, string> = { 0: "Normal", 1: "Super", 2: "Ultra", 3: "Boss", 4: "Herói" };
 // eMOB_TYPE, em DboShared/NtlShared2/NtlCharacter.h. A ordem e os 16 valores vêm de lá.
@@ -65,7 +66,7 @@ export function MobCatalogPanel() {
     <div className="listHeader"><div><strong>{data ? formatNumber(data.total) : "—"}</strong><span> mobs encontrados</span></div><div className="catalogSource">{data && <span>{data.sourceFile} + {data.textSourceFile} · {new Date(data.sourceUpdatedAt).toLocaleString("pt-BR")}</span>}<button className="refreshButton" onClick={() => void loadMobs()} disabled={loading}>↻ Atualizar</button></div></div>
     {error && <div className="errorBanner"><strong>Falha no catálogo</strong><span>{error}</span></div>}{loading && <div className="loadingState"><span className="spinner" /> Lendo o catálogo de mobs...</div>}{!loading && data?.mobs.length === 0 && <div className="emptyState">Nenhum mob corresponde aos filtros.</div>}
     {!loading && data && data.mobs.length > 0 && <div className="itemTableWrap"><table className="itemTable"><thead><tr><th>TBLIDX</th><th>Mob</th><th>Nível</th><th>Grau</th><th>LP</th><th>Recompensas</th><th /></tr></thead><tbody>{data.mobs.map((mob) => <tr key={mob.tblidx}><td><code>{mob.tblidx}</code></td><td><div className="itemIdentity"><div><strong>{mob.name}</strong><small>{mob.modelName || mob.internalName || "Sem modelo"}</small></div></div></td><td>{mob.level}</td><td><span className="catalogBadge">{gradeName(mob.grade)}</span></td><td>{formatNumber(mob.basicLp)}</td><td><small>EXP {formatNumber(mob.experience)}<br />Zeni {formatNumber(mob.dropZenny)}</small></td><td><div className="catalogRowActions"><button className="catalogDetailsButton" onClick={() => setDropsMob(mob)}>Drops</button><button className="catalogDetailsButton" onClick={() => setSkillsMob(mob)}>Skills</button><button className="catalogDetailsButton" onClick={() => setSelected(mob)}>Detalhes</button></div></td></tr>)}</tbody></table></div>}
-    {data && data.totalPages > 1 && <nav className="pagination" aria-label="Paginação do catálogo de mobs"><button disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>← Anterior</button><span>Página <strong>{data.page}</strong> de {data.totalPages}</span><button disabled={page >= data.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Próxima →</button></nav>}
+    {data && <Pagination page={data.page} totalPages={data.totalPages} disabled={loading} onChange={setPage} label="Paginação do catálogo de mobs" />}
     {selected && <MobDetails mob={selected} onClose={() => setSelected(null)} onOpenDrops={() => { setDropsMob(selected); setSelected(null); }} onOpenSkills={() => { setSkillsMob(selected); setSelected(null); }} />}
   </div>;
 }

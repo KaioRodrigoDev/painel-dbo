@@ -71,8 +71,8 @@ function criarEnvLocal() {
   const executionEnv = findExecutionEnvNextToPanel();
   const ini = executionEnv ? path.join(executionEnv, "config", "QueryServer.ini") : null;
   const sections = ini && existsSync(ini) ? parseIni(readFileSync(ini, "utf8")) : null;
-  const conta = bancoDoIni(sections?.DATABASE_ACCOUNT, "dbo_acc");
-  const personagem = bancoDoIni(sections?.DATABASE_CHARACTER, "dbo_char");
+  const conta = bancoDoIni(sections?.DATABASE_ACCOUNT, "mdbo_acc");
+  const personagem = bancoDoIni(sections?.DATABASE_CHARACTER, "mdbo_char");
   const senha = randomBytes(18).toString("base64url");
 
   const linhas = [

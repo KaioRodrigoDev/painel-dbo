@@ -1,22 +1,28 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
+import { Icon, type IconName } from "@/components/icons";
 import { ServerManagerPanel } from "@/components/server-manager-panel";
 import { ItemCatalogPanel } from "@/components/item-catalog-panel";
 import { SkillCatalogPanel } from "@/components/skill-catalog-panel";
 import { SkillTreePanel } from "@/components/skill-tree-panel";
 import { MobCatalogPanel } from "@/components/mob-catalog-panel";
 import { RecipePanel } from "@/components/recipe-panel";
+import { ProfessionRecipePanel } from "@/components/profession-recipe-panel";
+import { BattlePassPanel } from "@/components/battle-pass-panel";
 import { PlayersOverview, VipBadge, VipEditor, vipDate, type VipAccount } from "@/components/vip-panel";
 import { AdminMailEditor, VipGroupMailEditor } from "@/components/admin-mail-editor";
 import { DeliveryHistoryPanel } from "@/components/delivery-history-panel";
+import { Pagination } from "@/components/pagination";
 
 import type {
   AccountsResponse,
   CharacterSummary,
   EditableCharacterFields,
+  GameIntegrations,
 } from "@/lib/types";
 
 type Props = {
@@ -40,6 +46,67 @@ function identityLabel(character: CharacterSummary) {
   return `Raça ${character.race ?? "-"} · Classe ${character.characterClass ?? "-"} · Gênero ${character.gender ?? "-"}`;
 }
 
+type View = "overview" | "players" | "deliveries" | "battlePass" | "items" | "skills" | "skillTree" | "mobs" | "recipes" | "professions" | "servers";
+type Section = {
+  id: View;
+  label: string;
+  group: string;
+  icon: IconName;
+  eyebrow: string;
+  title: string;
+  description: string;
+  note: { title: string; text: string } | null;
+};
+
+// Uma fonte só para o menu lateral, o cabeçalho de cada página e a busca rápida.
+const SECTIONS: Section[] = [
+  { id: "overview", label: "Visão geral", group: "Jogadores", icon: "overview", eyebrow: "GESTÃO DE JOGADORES", title: "Visão geral", description: "Acompanhe suas contas, jogadores online e assinaturas VIP.", note: null },
+  { id: "players", label: "Jogadores", group: "Jogadores", icon: "players", eyebrow: "GESTÃO DE JOGADORES", title: "Contas e personagens", description: "O QueryServer coordena o salvamento, a saída e a limpeza de cache.", note: { title: "Modo seguro", text: "Raça e classe são somente leitura neste MVP" } },
+  { id: "deliveries", label: "Envios", group: "Jogadores", icon: "deliveries", eyebrow: "RASTREABILIDADE", title: "Envios de itens", description: "Acompanhe a fila, a entrega e a retirada dos itens enviados aos jogadores.", note: { title: "Comprovante permanente", text: "O resgate continua registrado mesmo após o correio ser apagado" } },
+  // Configuração do passe no banco de personagens; o servidor só relê com @bp reload.
+  { id: "battlePass", label: "Battle Pass", group: "Eventos", icon: "ticket", eyebrow: "EVENTOS DO JOGO", title: "Battle Pass", description: "Temporadas, missões e recompensas do passe, gravadas nas tabelas que o servidor lê.", note: { title: "Vale após @bp reload", text: "O jogo relê a configuração quando você roda @bp reload em cada canal" } },
+  { id: "items", label: "Itens", group: "Catálogo do jogo", icon: "items", eyebrow: "CATÁLOGO DO JOGO", title: "Itens do MDBO", description: "Consulte os dados carregados de Table_Item_Data.rdf sem modificar o servidor.", note: { title: "Somente leitura", text: "Esta aba não altera nem entrega itens a jogadores" } },
+  // A aba lista em modo de consulta, mas "Editar" abre o rascunho que publica no RDF.
+  // Prometer somente leitura aqui contradiz o próprio botão.
+  { id: "skills", label: "Skills", group: "Catálogo do jogo", icon: "skills", eyebrow: "CATÁLOGO DO JOGO", title: "Skills do MDBO", description: "Consulte requisitos, efeitos, progressão e ícones de Table_Skill_Data.rdf.", note: { title: "Edita com rascunho", text: "Nada muda até você revisar e publicar; não ensina skills a jogadores" } },
+  { id: "skillTree", label: "Árvore de skills", group: "Catálogo do jogo", icon: "skillTree", eyebrow: "LAYOUT DO CLIENTE", title: "Árvore de skills", description: "Reorganize a grade que o jogador vê, arrastando os ícones entre as células.", note: { title: "Grava no cliente", text: "Publicar regrava o gui.pak; o jogador precisa reabrir o cliente" } },
+  // Os atributos de combate continuam só de leitura, mas drops e skills passaram a ser
+  // editáveis e publicáveis daqui -- dizer "somente leitura" aqui viraria promessa falsa.
+  { id: "mobs", label: "Mobs", group: "Catálogo do jogo", icon: "mobs", eyebrow: "CATÁLOGO DO JOGO", title: "Mobs do MDBO", description: "Atributos, drops e skills de Table_MOB_Data.rdf e das tabelas de grupo e bag.", note: { title: "Drops e skills editáveis", text: "Atributos de combate são só leitura; drops e skills publicam no RDF com backup" } },
+  { id: "recipes", label: "Receitas", group: "Catálogo do jogo", icon: "recipes", eyebrow: "HOIPOI MIX", title: "Receitas de fabricação", description: "Até 5 materiais e 3 resultados por receita, os mesmos limites que o jogo usa.", note: { title: "Edita com rascunho", text: "Criar ou mudar só vale depois de revisar e publicar; o RDF sai com backup" } },
+  // Receitas das oficinas no banco de personagens; o QueryServer só relê com forgerecipesreload.
+  { id: "professions", label: "Profissões", group: "Catálogo do jogo", icon: "scroll", eyebrow: "OFICINAS DE PROFISSÃO", title: "Receitas das profissões", description: "Nível, tempo, XP e quantidades vão direto para o banco. Profissão, produto, materiais e receitas novas vão para o catálogo compilado e pedem build.", note: { title: "Vale após forgerecipesreload", text: "Digite forgerecipesreload no console do QueryServer (ou reinicie) depois de gravar" } },
+  { id: "servers", label: "Servidores", group: "Infraestrutura", icon: "servers", eyebrow: "INFRAESTRUTURA LOCAL", title: "Servidores do MDBO", description: "Inicie, finalize e acompanhe cada processo sem abrir vários terminais.", note: { title: "Lista controlada", text: "Backups e executáveis desconhecidos nunca são iniciados" } },
+];
+const SECTION_GROUPS = [...new Set(SECTIONS.map((section) => section.group))];
+const VIEW_IDS = new Set<string>(SECTIONS.map((section) => section.id));
+
+// A aba ativa mora no hash da URL: recarregar mantém a aba e o "voltar" do navegador
+// volta para a aba anterior.
+function subscribeToHash(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
+const readHash = () => window.location.hash.slice(1);
+const readServerHash = () => "";
+
+// Menu recolhido é preferência deste navegador; sem localStorage, o menu só fica aberto.
+const SIDEBAR_KEY = "mdbo-admin-sidebar";
+const sidebarListeners = new Set<() => void>();
+function subscribeToSidebar(onChange: () => void) {
+  sidebarListeners.add(onChange);
+  return () => { sidebarListeners.delete(onChange); };
+}
+function readSidebarCollapsed() {
+  try { return window.localStorage.getItem(SIDEBAR_KEY) === "collapsed"; } catch { return false; }
+}
+function writeSidebarCollapsed(collapsed: boolean) {
+  try { window.localStorage.setItem(SIDEBAR_KEY, collapsed ? "collapsed" : "open"); } catch { /* fica só nesta sessão */ }
+  sidebarListeners.forEach((listener) => listener());
+}
+
+const normalizeSearch = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
 export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
   const router = useRouter();
   const [draftSearch, setDraftSearch] = useState("");
@@ -50,12 +117,18 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [editing, setEditing] = useState<{ character: CharacterSummary; cash: number } | null>(null);
-  const [activeView, setActiveView] = useState<"overview" | "players" | "deliveries" | "items" | "skills" | "skillTree" | "mobs" | "recipes" | "servers">("overview");
+  const hash = useSyncExternalStore(subscribeToHash, readHash, readServerHash);
+  const activeView: View = VIEW_IDS.has(hash) ? (hash as View) : "overview";
+  const setActiveView = useCallback((view: View) => { window.location.hash = view; }, []);
+  const sidebarCollapsed = useSyncExternalStore(subscribeToSidebar, readSidebarCollapsed, () => false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [vipLevel, setVipLevel] = useState("all");
   const [vipState, setVipState] = useState("all");
   const [vipEditing, setVipEditing] = useState<{ account: VipAccount; renew: boolean } | null>(null);
   const [mailingAccount, setMailingAccount] = useState<AccountsResponse["accounts"][number] | null>(null);
   const [groupMailLevel, setGroupMailLevel] = useState<number | null>(null);
+  const [groupMailIntegrations, setGroupMailIntegrations] = useState<GameIntegrations | undefined>(undefined);
   const [overviewVersion, setOverviewVersion] = useState(0);
 
   const loadAccounts = useCallback(async (signal?: AbortSignal) => {
@@ -112,86 +185,96 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
     router.refresh();
   }
 
+  function navigate(view: View) {
+    setActiveView(view);
+    setMenuOpen(false);
+    setPaletteOpen(false);
+  }
+
+  // Ctrl+K (ou Cmd+K) abre a busca de seções de qualquer lugar; Esc fecha o menu do celular.
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      } else if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const section = SECTIONS.find((entry) => entry.id === activeView) ?? SECTIONS[0];
+
   return (
-    <main className="dashboardShell">
-      <header className="topbar">
-        <div className="brandCompact">
-          <div className="miniBall">★</div>
-          <div><strong>Dbo World</strong><span>ADMIN CONTROL</span></div>
+    <main className={`dashboardShell${sidebarCollapsed ? " sidebarCollapsed" : ""}${menuOpen ? " menuOpen" : ""}`}>
+      <aside className="sidebar" aria-label="Navegação principal">
+        <div className="sidebarBrand">
+          <Image src="/images/DB_1ST.png" alt="" width={36} height={36} priority className="brandOrb" />
+          <div><strong>MDBO</strong><span>Painel admin</span></div>
         </div>
-        <nav className="dashboardNav" aria-label="Seções administrativas">
-          <button className={activeView === "overview" ? "active" : ""} onClick={() => setActiveView("overview")}>Visão geral</button>
-          <button className={activeView === "players" ? "active" : ""} onClick={() => setActiveView("players")}>Jogadores</button>
-          <button className={activeView === "deliveries" ? "active" : ""} onClick={() => setActiveView("deliveries")}>Envios</button>
-          <button className={activeView === "items" ? "active" : ""} onClick={() => setActiveView("items")}>Itens</button>
-          <button className={activeView === "skills" ? "active" : ""} onClick={() => setActiveView("skills")}>Skills</button>
-          <button className={activeView === "skillTree" ? "active" : ""} onClick={() => setActiveView("skillTree")}>Árvore de skills</button>
-          <button className={activeView === "mobs" ? "active" : ""} onClick={() => setActiveView("mobs")}>Mobs</button>
-          <button className={activeView === "recipes" ? "active" : ""} onClick={() => setActiveView("recipes")}>Receitas</button>
-          <button className={activeView === "servers" ? "active" : ""} onClick={() => setActiveView("servers")}>Servidores</button>
+        <nav className="sidebarNav">
+          {SECTION_GROUPS.map((group) => (
+            <div className="navGroup" key={group}>
+              <span className="navGroupLabel">{group}</span>
+              {SECTIONS.filter((entry) => entry.group === group).map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={`navItem${entry.id === activeView ? " active" : ""}`}
+                  aria-current={entry.id === activeView ? "page" : undefined}
+                  title={sidebarCollapsed ? entry.label : undefined}
+                  onClick={() => navigate(entry.id)}
+                >
+                  <Icon name={entry.icon} />
+                  <span>{entry.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
         </nav>
-        <div className="adminIdentity">
-          <span className="statusDot" />
-          <span>{administrator}</span>
-          <button className="ghostButton" onClick={logout}>Sair</button>
+        <div className="sidebarFooter">
+          <div className="adminIdentity">
+            <span className="avatar small">{administrator.slice(0, 2).toUpperCase()}</span>
+            <div><strong>{administrator}</strong><small><span className="statusDot" /> Conectado</small></div>
+          </div>
+          <button type="button" className="iconButton" onClick={logout} title="Sair" aria-label="Sair"><Icon name="logout" /></button>
         </div>
-      </header>
+      </aside>
+      {menuOpen && <div className="sidebarScrim" aria-hidden="true" onClick={() => setMenuOpen(false)} />}
 
-      {activeView === "overview" ? <section className="heroPanel"><div><div className="eyebrow">GESTÃO DE JOGADORES</div><h1>Visão geral</h1><p>Acompanhe suas contas, jogadores online e assinaturas VIP.</p></div></section> : activeView === "players" ? <section className="heroPanel">
-        <div>
-          <div className="eyebrow">GESTÃO DE JOGADORES</div>
-          <h1>Contas e personagens</h1>
-          <p>O QueryServer coordena o salvamento, a saída e a limpeza de cache.</p>
-        </div>
-        <div className="safetyCard"><span>◆</span><div><strong>Modo seguro</strong><small>Raça e classe são somente leitura neste MVP</small></div></div>
-      </section> : activeView === "deliveries" ? <section className="heroPanel">
-        <div><div className="eyebrow">RASTREABILIDADE</div><h1>Envios de itens</h1><p>Acompanhe a fila, a entrega e a retirada dos itens enviados aos jogadores.</p></div>
-        <div className="safetyCard"><span>✓</span><div><strong>Comprovante permanente</strong><small>O resgate continua registrado mesmo após o correio ser apagado</small></div></div>
-      </section> : activeView === "items" ? <section className="heroPanel">
-        <div>
-          <div className="eyebrow">CATÁLOGO DO JOGO</div>
-          <h1>Itens do Dbo World</h1>
-          <p>Consulte os dados carregados de Table_Item_Data.rdf sem modificar o servidor.</p>
-        </div>
-        <div className="safetyCard"><span>◆</span><div><strong>Somente leitura</strong><small>Esta aba não altera nem entrega itens a jogadores</small></div></div>
-      </section> : activeView === "skills" ? <section className="heroPanel">
-        <div>
-          <div className="eyebrow">CATÁLOGO DO JOGO</div>
-          <h1>Skills do Dbo World</h1>
-          <p>Consulte requisitos, efeitos, progressão e ícones de Table_Skill_Data.rdf.</p>
-        </div>
-        {/* A aba lista em modo de consulta, mas "Editar" abre o rascunho que publica no RDF.
-            Prometer somente leitura aqui contradiz o próprio botão. */}
-        <div className="safetyCard"><span>◆</span><div><strong>Edita com rascunho</strong><small>Nada muda até você revisar e publicar; não ensina skills a jogadores</small></div></div>
-      </section> : activeView === "skillTree" ? <section className="heroPanel">
-        <div>
-          <div className="eyebrow">LAYOUT DO CLIENTE</div>
-          <h1>Árvore de skills</h1>
-          <p>Reorganize a grade que o jogador vê, arrastando os ícones entre as células.</p>
-        </div>
-        <div className="safetyCard"><span>◆</span><div><strong>Grava no cliente</strong><small>Publicar regrava o gui.pak; o jogador precisa reabrir o cliente</small></div></div>
-      </section> : activeView === "mobs" ? <section className="heroPanel">
-        <div><div className="eyebrow">CATÁLOGO DO JOGO</div><h1>Mobs do Dbo World</h1><p>Atributos, drops e skills de Table_MOB_Data.rdf e das tabelas de grupo e bag.</p></div>
-        {/* Os atributos de combate continuam só de leitura, mas drops e skills passaram a ser
-            editáveis e publicáveis daqui -- dizer "somente leitura" aqui viraria promessa falsa. */}
-        <div className="safetyCard"><span>◆</span><div><strong>Drops e skills editáveis</strong><small>Atributos de combate são só leitura; drops e skills publicam no RDF com backup</small></div></div>
-      </section> : activeView === "recipes" ? <section className="heroPanel">
-        <div>
-          <div className="eyebrow">HOIPOI MIX</div>
-          <h1>Receitas de fabricação</h1>
-          <p>Até 5 materiais e 3 resultados por receita, os mesmos limites que o jogo usa.</p>
-        </div>
-        <div className="safetyCard"><span>◆</span><div><strong>Edita com rascunho</strong><small>Criar ou mudar só vale depois de revisar e publicar; o RDF sai com backup</small></div></div>
-      </section> : <section className="heroPanel">
-        <div>
-          <div className="eyebrow">INFRAESTRUTURA LOCAL</div>
-          <h1>Servidores do Dbo World</h1>
-          <p>Inicie, finalize e acompanhe cada processo sem abrir vários terminais.</p>
-        </div>
-        <div className="safetyCard"><span>◆</span><div><strong>Lista controlada</strong><small>Backups e executáveis desconhecidos nunca são iniciados</small></div></div>
-      </section>}
+      <div className="appMain">
+        <header className="appHeader">
+          <button type="button" className="iconButton menuButton" onClick={() => setMenuOpen(true)} aria-label="Abrir menu"><Icon name="menu" /></button>
+          <button
+            type="button"
+            className="iconButton collapseButton"
+            onClick={() => writeSidebarCollapsed(!sidebarCollapsed)}
+            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+            title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            <Icon name="sidebar" />
+          </button>
+          <nav className="breadcrumb" aria-label="Você está em">
+            <span>{section.group}</span>
+            <span aria-hidden="true">/</span>
+            <strong>{section.label}</strong>
+          </nav>
+          <button type="button" className="quickJump" onClick={() => setPaletteOpen(true)}>
+            <Icon name="search" size={15} />
+            <span>Ir para seção…</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+        </header>
 
-      {activeView === "overview" ? <><PlayersOverview key={overviewVersion} onAccounts={(state = "all", level = "all") => { setVipState(state); setVipLevel(level); setPage(1); setSearch(""); setDraftSearch(""); setActiveView("players"); }} onRenew={account => setVipEditing({ account, renew: true })} onBulkMail={level => setGroupMailLevel(level)} />{actionMessage && <div className="successBanner" role="status">{actionMessage}</div>}</> : activeView === "players" ? <section className="contentPanel">
+        <div className="viewStage" key={activeView}>
+      <section className="heroPanel">
+        <div><div className="eyebrow">{section.eyebrow}</div><h1>{section.title}</h1><p>{section.description}</p></div>
+        {section.note && <div className="safetyCard"><Icon name="shield" size={20} /><div><strong>{section.note.title}</strong><small>{section.note.text}</small></div></div>}
+      </section>
+
+      {activeView === "overview" ? <><PlayersOverview key={overviewVersion} onAccounts={(state = "all", level = "all") => { setVipState(state); setVipLevel(level); setPage(1); setSearch(""); setDraftSearch(""); setActiveView("players"); }} onRenew={account => setVipEditing({ account, renew: true })} onBulkMail={(level, integrations) => { setGroupMailLevel(level); setGroupMailIntegrations(integrations); }} />{actionMessage && <div className="successBanner" role="status">{actionMessage}</div>}</> : activeView === "players" ? <section className="contentPanel">
         <form className="searchBar" onSubmit={submitSearch}>
           <div className="searchInputWrap">
             <span aria-hidden="true">⌕</span>
@@ -217,7 +300,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
 
         {error && <div className="errorBanner"><strong>Falha na consulta</strong><span>{error}</span></div>}
         {actionMessage && <div className="successBanner"><strong>Solicitação registrada</strong><span>{actionMessage}</span></div>}
-        {loading && <div className="loadingState"><span className="spinner" /> Consultando bancos do Dbo World...</div>}
+        {loading && <div className="loadingState"><span className="spinner" /> Consultando bancos do MDBO...</div>}
         {!loading && data?.accounts.length === 0 && <div className="emptyState">Nenhuma conta encontrada para essa busca.</div>}
 
         {!loading && data && (
@@ -234,7 +317,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
                   <span className="chevron">⌄</span>
                 </summary>
                 <div className="accountDetails">
-                  <div className="vipAccountActions"><span>Validade VIP: <strong>{account.vip === 0 ? "Sem VIP" : data.vipExpirySupported ? vipDate(account.vipExpiresAt) : "Indisponível neste banco"}</strong></span><button className="mailVipButton" onClick={() => setMailingAccount(account)}>✉ Enviar item</button><button className="secondaryButton" onClick={() => setVipEditing({ account, renew: false })}>Gerenciar VIP</button>{data.vipExpirySupported && <button className="secondaryButton" onClick={() => setVipEditing({ account, renew: true })}>Renovar VIP</button>}</div>
+                  <div className="vipAccountActions"><span>Validade VIP: <strong>{account.vip === 0 ? "Sem VIP" : data.vipExpirySupported ? vipDate(account.vipExpiresAt) : "Indisponível neste banco"}</strong></span><button className="mailVipButton" disabled={!(data.integrations.mail || data.integrations.cashShop)} title={data.integrations.mail || data.integrations.cashShop ? undefined : "O QueryServer do MDBO ainda não entrega itens enviados pelo painel (correio e Cash Shop)"} onClick={() => setMailingAccount(account)}>✉ Enviar item</button><button className="secondaryButton" onClick={() => setVipEditing({ account, renew: false })}>Gerenciar VIP</button>{data.vipExpirySupported && <button className="secondaryButton" onClick={() => setVipEditing({ account, renew: true })}>Renovar VIP</button>}</div>
                   <div className="accountFacts">
                     <span>Último login <strong>{formatDate(account.lastLogin)}</strong></span>
                     <span>Cash <strong>{formatNumber(account.mallPoints)}</strong></span>
@@ -264,11 +347,11 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
                         )}
                         <button
                           className="secondaryButton"
-                          disabled={Boolean(character.pendingUpdate)}
-                          title={character.pendingUpdate ? "Aguarde o QueryServer concluir a solicitação" : "Editar personagem"}
+                          disabled={Boolean(character.pendingUpdate) || !data.integrations.characterEdits}
+                          title={!data.integrations.characterEdits ? "O QueryServer do MDBO ainda não aplica edições feitas pelo painel; a solicitação ficaria pendente para sempre" : character.pendingUpdate ? "Aguarde o QueryServer concluir a solicitação" : "Editar personagem"}
                           onClick={() => setEditing({ character, cash: account.mallPoints })}
                         >
-                          {character.pendingUpdate ? "Processamento pendente" : character.online ? "Editar e enviar à seleção" : "Editar personagem"}
+                          {!data.integrations.characterEdits ? "Edição indisponível no MDBO" : character.pendingUpdate ? "Processamento pendente" : character.online ? "Editar e enviar à seleção" : "Editar personagem"}
                         </button>
                       </article>
                     ))}
@@ -280,18 +363,15 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
           </div>
         )}
 
-        {data && data.totalPages > 1 && (
-          <nav className="pagination" aria-label="Paginação">
-            <button disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>← Anterior</button>
-            <span>Página <strong>{data.page}</strong> de {data.totalPages}</span>
-            <button disabled={page >= data.totalPages || loading} onClick={() => setPage((value) => value + 1)}>Próxima →</button>
-          </nav>
-        )}
-      </section> : activeView === "deliveries" ? <section className="contentPanel"><DeliveryHistoryPanel /></section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : activeView === "recipes" ? <section className="contentPanel"><RecipePanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
+        {data && <Pagination page={data.page} totalPages={data.totalPages} disabled={loading} onChange={setPage} label="Paginação das contas" />}
+      </section> : activeView === "deliveries" ? <section className="contentPanel"><DeliveryHistoryPanel /></section> : activeView === "battlePass" ? <section className="contentPanel"><BattlePassPanel /></section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : activeView === "recipes" ? <section className="contentPanel"><RecipePanel /></section> : activeView === "professions" ? <section className="contentPanel"><ProfessionRecipePanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
+        </div>
+      </div>
 
+      {paletteOpen && <CommandPalette onSelect={navigate} onClose={() => setPaletteOpen(false)} />}
       {vipEditing && <VipEditor account={vipEditing.account} renew={vipEditing.renew} expirySupported={data?.vipExpirySupported ?? true} onClose={() => setVipEditing(null)} onSaved={message => { setVipEditing(null); setActionMessage(message); setOverviewVersion(value => value + 1); if (activeView === "players") void loadAccounts(); }} />}
-      {mailingAccount && <AdminMailEditor account={mailingAccount} onClose={() => setMailingAccount(null)} onSaved={message => { setMailingAccount(null); setActionMessage(message); }} />}
-      {groupMailLevel && <VipGroupMailEditor initialLevel={groupMailLevel} onClose={() => setGroupMailLevel(null)} onSaved={message => { setGroupMailLevel(null); setActionMessage(message); }} />}
+      {mailingAccount && <AdminMailEditor account={mailingAccount} integrations={data?.integrations} onClose={() => setMailingAccount(null)} onSaved={message => { setMailingAccount(null); setActionMessage(message); }} />}
+      {groupMailLevel && <VipGroupMailEditor initialLevel={groupMailLevel} integrations={groupMailIntegrations} onClose={() => setGroupMailLevel(null)} onSaved={message => { setGroupMailLevel(null); setActionMessage(message); }} />}
       {editing && (
         <CharacterEditor
           character={editing.character}
@@ -302,6 +382,59 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
         />
       )}
     </main>
+  );
+}
+
+function CommandPalette({ onSelect, onClose }: { onSelect: (view: View) => void; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const termo = normalizeSearch(query.trim());
+  const results = SECTIONS.filter((entry) => normalizeSearch(`${entry.label} ${entry.title} ${entry.group}`).includes(termo));
+  const active = Math.min(cursor, Math.max(results.length - 1, 0));
+
+  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown" && results.length) { event.preventDefault(); setCursor((active + 1) % results.length); }
+    else if (event.key === "ArrowUp" && results.length) { event.preventDefault(); setCursor((active - 1 + results.length) % results.length); }
+    else if (event.key === "Enter" && results[active]) { event.preventDefault(); onSelect(results[active].id); }
+    else if (event.key === "Escape") { event.preventDefault(); onClose(); }
+  }
+
+  return (
+    <div className="modalBackdrop paletteBackdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="commandPalette" role="dialog" aria-modal="true" aria-label="Ir para seção">
+        <div className="paletteSearch">
+          <Icon name="search" />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => { setQuery(event.target.value); setCursor(0); }}
+            onKeyDown={onKeyDown}
+            placeholder="Ir para seção…"
+            aria-label="Buscar seção"
+          />
+          <kbd>Esc</kbd>
+        </div>
+        <ul className="paletteResults" role="listbox" aria-label="Seções">
+          {results.map((entry, index) => (
+            <li key={entry.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={index === active}
+                className={index === active ? "active" : ""}
+                onMouseEnter={() => setCursor(index)}
+                onClick={() => onSelect(entry.id)}
+              >
+                <Icon name={entry.icon} />
+                <span><strong>{entry.label}</strong><small>{entry.group}</small></span>
+                {index === active && <Icon name="enter" size={14} />}
+              </button>
+            </li>
+          ))}
+          {!results.length && <li className="paletteEmpty">Nenhuma seção encontrada.</li>}
+        </ul>
+      </div>
+    </div>
   );
 }
 
