@@ -2033,3 +2033,50 @@ button.overviewStat:hover { transform: translateY(-2px); border-color: rgba(255,
 .dropDrawBadge.profPending { color: #bfdbfe; background: rgba(59, 130, 246, 0.22); }
 .profInputs { display: grid; gap: 8px; }
 .profInputRow { display: grid; grid-template-columns: minmax(0, 1fr) 90px auto; align-items: end; gap: 8px; }
+
+/* ===================== Erros do jogo (crash do cliente, enviados pelo launcher) ===================== */
+
+.crashToolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.crashToolbar select { height: 40px; padding: 0 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--panel-solid); font-size: 14px; }
+.crashToolbar .refreshButton { margin-left: auto; }
+.crashStatus.new { color: var(--red-ink); background: rgba(244,67,54,.13); }
+.crashStatus.seen { color: var(--amber-ink); background: rgba(255,193,7,.13); }
+.crashStatus.fixed { color: var(--green-ink); background: rgba(76,175,80,.13); }
+.crashStatus.ignored { color: var(--muted); background: rgba(255,255,255,.06); }
+.crashGroups { display: grid; gap: 10px; }
+.crashGroup { border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.02); overflow: hidden; }
+.crashGroup.open { border-color: var(--line-strong); }
+.crashGroupHead { display: grid; grid-template-columns: 92px minmax(0,1fr) 120px 170px; gap: 14px; align-items: center; width: 100%; padding: 14px 16px; color: inherit; text-align: left; background: transparent; border: 0; cursor: pointer; }
+.crashGroupHead:hover { background: rgba(255,255,255,.03); }
+.crashGroupHead .crashStatus { justify-content: center; }
+.crashSignature, .crashNumbers { display: grid; gap: 5px; min-width: 0; }
+.crashSignature strong { font-size: 12px; overflow-wrap: anywhere; }
+.crashSignature small, .crashNumbers small { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.crashNumbers strong { font-size: 12px; }
+.crashBody { display: grid; gap: 12px; padding: 0 16px 16px; border-top: 1px solid var(--line-soft); }
+.crashActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; color: var(--muted); font-size: 11px; }
+.crashActions .ghostButton { width: auto; min-height: 30px; padding: 0 12px; }
+.crashActions small { color: var(--faint); }
+.crashSplit { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 12px; align-items: start; }
+.crashList { display: grid; gap: 6px; max-height: 560px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.crashList button { display: grid; gap: 4px; width: 100%; padding: 10px 12px; color: inherit; text-align: left; border: 1px solid var(--line-soft); border-radius: 9px; background: transparent; cursor: pointer; }
+.crashList button:hover { background: rgba(255,255,255,.03); }
+.crashList button.active { border-color: rgb(var(--accent-rgb) / .6); background: rgb(var(--accent-rgb) / .1); }
+.crashList strong { font-size: 11px; } .crashList small { color: var(--muted); font-size: 10px; }
+.crashListEmpty { display: flex; justify-content: center; padding: 20px; }
+.crashDetail { display: grid; gap: 10px; min-width: 0; }
+.crashDetail dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 8px 16px; margin: 0; }
+.crashDetail dl div { display: grid; gap: 3px; }
+.crashDetail dt { color: var(--faint); font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.crashDetail dd { margin: 0; font-size: 11px; overflow-wrap: anywhere; }
+.crashTabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.crashTabs button { padding: 7px 11px; color: var(--muted); font-size: 11px; border: 1px solid var(--line); border-radius: 8px; background: transparent; cursor: pointer; }
+.crashTabs button[aria-selected="true"] { color: var(--ink); border-color: rgb(var(--accent-rgb) / .6); background: rgb(var(--accent-rgb) / .14); }
+.crashTabs .crashCopy { margin-left: auto; }
+.crashText { max-height: 480px; margin: 0; padding: 12px 14px; overflow: auto; color: var(--ink); font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--input-bg); }
+@media (max-width: 920px) {
+  .crashGroupHead { grid-template-columns: 80px minmax(0,1fr); }
+  .crashGroupHead .crashNumbers { grid-column: 2; }
+  .crashSplit { grid-template-columns: 1fr; }
+  .crashList { max-height: 220px; }
+}

@@ -16,6 +16,7 @@ import { BattlePassPanel } from "@/components/battle-pass-panel";
 import { PlayersOverview, VipBadge, VipEditor, vipDate, type VipAccount } from "@/components/vip-panel";
 import { AdminMailEditor, VipGroupMailEditor } from "@/components/admin-mail-editor";
 import { DeliveryHistoryPanel } from "@/components/delivery-history-panel";
+import { CrashReportPanel } from "@/components/crash-report-panel";
 import { Pagination } from "@/components/pagination";
 
 import type {
@@ -46,7 +47,7 @@ function identityLabel(character: CharacterSummary) {
   return `Raça ${character.race ?? "-"} · Classe ${character.characterClass ?? "-"} · Gênero ${character.gender ?? "-"}`;
 }
 
-type View = "overview" | "players" | "deliveries" | "battlePass" | "items" | "skills" | "skillTree" | "mobs" | "recipes" | "professions" | "servers";
+type View = "overview" | "players" | "deliveries" | "battlePass" | "items" | "skills" | "skillTree" | "mobs" | "recipes" | "professions" | "servers" | "crashes";
 type Section = {
   id: View;
   label: string;
@@ -76,6 +77,8 @@ const SECTIONS: Section[] = [
   { id: "recipes", label: "Receitas", group: "Catálogo do jogo", icon: "recipes", eyebrow: "HOIPOI MIX", title: "Receitas de fabricação", description: "Até 5 materiais e 3 resultados por receita, os mesmos limites que o jogo usa.", note: { title: "Edita com rascunho", text: "Criar ou mudar só vale depois de revisar e publicar; o RDF sai com backup" } },
   // Receitas das oficinas no banco de personagens; o QueryServer só relê com forgerecipesreload.
   { id: "professions", label: "Profissões", group: "Catálogo do jogo", icon: "scroll", eyebrow: "OFICINAS DE PROFISSÃO", title: "Receitas das profissões", description: "Nível, tempo, XP e quantidades vão direto para o banco. Profissão, produto, materiais e receitas novas vão para o catálogo compilado e pedem build.", note: { title: "Vale após forgerecipesreload", text: "Digite forgerecipesreload no console do QueryServer (ou reinicie) depois de gravar" } },
+  // Crash do cliente: o launcher manda o Client.RPT para a API de contas (tabela launcher_crash_reports).
+  { id: "crashes", label: "Erros do jogo", group: "Infraestrutura", icon: "bug", eyebrow: "ESTABILIDADE DO CLIENTE", title: "Erros do jogo", description: "Crashes do cliente enviados pelo launcher, agrupados pelo lugar do código onde o jogo quebrou.", note: { title: "Só leitura do jogo", text: "Marcar como visto ou corrigido muda só o painel; nada é enviado ao jogador" } },
   { id: "servers", label: "Servidores", group: "Infraestrutura", icon: "servers", eyebrow: "INFRAESTRUTURA LOCAL", title: "Servidores do MDBO", description: "Inicie, finalize e acompanhe cada processo sem abrir vários terminais.", note: { title: "Lista controlada", text: "Backups e executáveis desconhecidos nunca são iniciados" } },
 ];
 const SECTION_GROUPS = [...new Set(SECTIONS.map((section) => section.group))];
@@ -364,7 +367,7 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
         )}
 
         {data && <Pagination page={data.page} totalPages={data.totalPages} disabled={loading} onChange={setPage} label="Paginação das contas" />}
-      </section> : activeView === "deliveries" ? <section className="contentPanel"><DeliveryHistoryPanel /></section> : activeView === "battlePass" ? <section className="contentPanel"><BattlePassPanel /></section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : activeView === "recipes" ? <section className="contentPanel"><RecipePanel /></section> : activeView === "professions" ? <section className="contentPanel"><ProfessionRecipePanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
+      </section> : activeView === "deliveries" ? <section className="contentPanel"><DeliveryHistoryPanel /></section> : activeView === "battlePass" ? <section className="contentPanel"><BattlePassPanel /></section> : activeView === "items" ? <section className="contentPanel"><ItemCatalogPanel /></section> : activeView === "skills" ? <section className="contentPanel"><SkillCatalogPanel /></section> : activeView === "skillTree" ? <section className="contentPanel"><SkillTreePanel /></section> : activeView === "mobs" ? <section className="contentPanel"><MobCatalogPanel /></section> : activeView === "recipes" ? <section className="contentPanel"><RecipePanel /></section> : activeView === "professions" ? <section className="contentPanel"><ProfessionRecipePanel /></section> : activeView === "crashes" ? <section className="contentPanel"><CrashReportPanel /></section> : <section className="contentPanel"><ServerManagerPanel /></section>}
         </div>
       </div>
 
