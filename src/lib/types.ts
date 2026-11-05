@@ -179,6 +179,18 @@ export type ItemCatalogEntry = {
   useDisassemble: number;
   cashShopTblidx?: number;
   cashShopStack?: number;
+  /** Só vem quando o catálogo pede `details=1`: os efeitos do tooltip do jogo. */
+  effects?: ItemEffects;
+};
+
+/**
+ * O que o tooltip do item mostra no jogo e não está no Table_Item_Data: a opção fixa
+ * (table_item_option_data) e o efeito de uso (Table_Use_Item_Data), com o texto já montado
+ * como o cliente monta (Logic_GetSystemEffectText).
+ */
+export type ItemEffects = {
+  option: { tblidx: number; name: string; lines: string[] } | null;
+  use: { tblidx: number; lines: string[]; cooldownSeconds: number; durationSeconds: number } | null;
 };
 
 export type ItemCatalogResponse = {
@@ -192,6 +204,8 @@ export type ItemCatalogResponse = {
   sourceUpdatedAt: string;
   availableTypes: number[];
   availableRanks: number[];
+  /** Pediu `details=1` e as tabelas de efeito não puderam ser lidas. */
+  effectsError?: string;
 };
 
 export type SkillCatalogEntry = {
@@ -528,6 +542,8 @@ export type SystemEffectEntry = {
   activeEffectType: number;
   effectCode: number;
   successEffectName: string;
+  /** Texto do efeito na seção SYSTEM_EFFECT da tabela de textos (ex.: "Increases Max LP by %d"). */
+  infoTextId: number;
 };
 
 /** Uma opção de campo numérico derivada dos valores que realmente existem na tabela. */

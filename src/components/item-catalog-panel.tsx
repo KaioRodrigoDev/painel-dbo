@@ -69,6 +69,27 @@ function levelLabel(item: ItemCatalogEntry) {
   return `${item.minimumLevel}${item.maximumLevel && item.maximumLevel !== 255 ? `–${item.maximumLevel}` : ""}`;
 }
 
+/** Atributo de 16 bits: 0xFFFF é "não tem" na tabela (ex.: ataque de um chip de scouter). */
+function statValue(value: number) {
+  return value === 0xffff || value === 0 ? null : value;
+}
+
+function durationLabel(seconds: number) {
+  if (seconds <= 0 || seconds >= 0xffffffff) return null;
+  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 3600) return seconds % 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds / 60} min`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
+}
+
+/** Faixa de nível digitada: vazio é "sem limite"; o resto vai de 0 a 255, como a tabela. */
+function parseLevel(value: string) {
+  if (value.trim() === "") return "";
+  const number = Math.trunc(Number(value));
+  return Number.isFinite(number) ? String(Math.min(255, Math.max(0, number))) : "";
+}
+
 function ItemIcon({ item }: { item: ItemCatalogEntry }) {
   const [failed, setFailed] = useState(false);
   if (!item.iconName || failed) {
@@ -92,6 +113,12 @@ export function ItemCatalogPanel() {
   const [search, setSearch] = useState("");
   const [itemType, setItemType] = useState("");
   const [rank, setRank] = useState("");
+  // A faixa de nível vale ao buscar (Enter ou botão), como o texto: digitar "15" não busca "1" antes.
+  const [draftMinLevel, setDraftMinLevel] = useState("");
+  const [draftMaxLevel, setDraftMaxLevel] = useState("");
+  const [minLevel, setMinLevel] = useState("");
+  const [maxLevel, setMaxLevel] = useState("");
+  const [hovered, setHovered] = useState<{ item: ItemCatalogEntry; rect: DOMRect } | null>(null);
   const [page, setPage] = useState(1);
   // O painel só monta depois da hidratação (a aba vem do hash da URL), então ler o
   // localStorage aqui não diverge do HTML do servidor.
@@ -106,10 +133,12 @@ export function ItemCatalogPanel() {
   const loadItems = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), details: "1" });
     if (search) params.set("search", search);
     if (itemType) params.set("itemType", itemType);
     if (rank) params.set("rank", rank);
+    if (minLevel) params.set("minLevel", minLevel);
+    if (maxLevel) params.set("maxLevel", maxLevel);
 
     try {
       const response = await fetch(`/api/items?${params}`, { signal, cache: "no-store" });
@@ -128,7 +157,19 @@ export function ItemCatalogPanel() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [itemType, page, pageSize, rank, router, search]);
+  }, [itemType, maxLevel, minLevel, page, pageSize, rank, router, search]);
+
+  // O tooltip fica preso na tela (position: fixed); rolar a lista deixaria ele longe do card.
+  useEffect(() => {
+    if (!hovered) return;
+    const hide = () => setHovered(null);
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+    };
+  }, [hovered]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,6 +186,12 @@ export function ItemCatalogPanel() {
     event.preventDefault();
     setPage(1);
     setSearch(draftSearch.trim());
+    const from = parseLevel(draftMinLevel);
+    const to = parseLevel(draftMaxLevel);
+    setDraftMinLevel(from);
+    setDraftMaxLevel(to);
+    setMinLevel(from);
+    setMaxLevel(to);
   }
 
   function clearFilters() {
@@ -152,6 +199,10 @@ export function ItemCatalogPanel() {
     setSearch("");
     setItemType("");
     setRank("");
+    setDraftMinLevel("");
+    setDraftMaxLevel("");
+    setMinLevel("");
+    setMaxLevel("");
     setPage(1);
   }
 
@@ -175,7 +226,7 @@ export function ItemCatalogPanel() {
 
   return (
     <div className="itemCatalogPanel">
-      <form className="itemFilters" onSubmit={submitSearch}>
+      <form className="itemFilters itemCatalogFilters" onSubmit={submitSearch}>
         <div className="searchInputWrap">
           <span aria-hidden="true">⌕</span>
           <input value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder="Buscar por nome, TBLIDX, ícone ou modelo" maxLength={80} />
@@ -188,8 +239,14 @@ export function ItemCatalogPanel() {
           <option value="">Todos os ranks</option>
           {data?.availableRanks.map((value) => <option key={value} value={value}>{rankName(value)}</option>)}
         </select>
+        <fieldset className="levelRange" title="Nível mínimo exigido para usar o item. Deixe um lado vazio para não limitar.">
+          <legend>Nível</legend>
+          <input type="number" inputMode="numeric" min={0} max={255} value={draftMinLevel} onChange={(event) => setDraftMinLevel(event.target.value)} placeholder="de" aria-label="Nível a partir de" />
+          <span aria-hidden="true">–</span>
+          <input type="number" inputMode="numeric" min={0} max={255} value={draftMaxLevel} onChange={(event) => setDraftMaxLevel(event.target.value)} placeholder="até" aria-label="Nível até" />
+        </fieldset>
         <button className="primaryButton compact" type="submit">Buscar</button>
-        {(search || itemType || rank) && <button className="catalogClearButton" type="button" onClick={clearFilters}>Limpar</button>}
+        {(search || itemType || rank || minLevel || maxLevel) && <button className="catalogClearButton" type="button" onClick={clearFilters}>Limpar</button>}
       </form>
 
       <div className="listHeader" ref={listTop}>
@@ -218,8 +275,12 @@ export function ItemCatalogPanel() {
               key={item.tblidx}
               type="button"
               className={`itemCard rank${item.rank}`}
-              onClick={() => setSelected(item)}
-              title={`${item.name} · ${item.iconName || "sem ícone"} · clique para ver os detalhes`}
+              onClick={() => { setHovered(null); setSelected(item); }}
+              onMouseEnter={(event) => setHovered({ item, rect: event.currentTarget.getBoundingClientRect() })}
+              onMouseLeave={() => setHovered(null)}
+              onFocus={(event) => setHovered({ item, rect: event.currentTarget.getBoundingClientRect() })}
+              onBlur={() => setHovered(null)}
+              aria-describedby={hovered?.item.tblidx === item.tblidx ? "item-tooltip" : undefined}
             >
               <div className="itemCardHead">
                 <ItemIcon item={item} />
@@ -241,9 +302,71 @@ export function ItemCatalogPanel() {
 
       {pagination}
 
+      {hovered && !selected && <ItemTooltip item={hovered.item} rect={hovered.rect} effectsError={data?.effectsError} />}
       {selected && <ItemDetails item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
+}
+
+const TOOLTIP_WIDTH = 300;
+const TOOLTIP_GAP = 10;
+
+/**
+ * O tooltip do jogo, ao passar o mouse no card: atributos, efeitos da opção e do uso, descrição.
+ *
+ * Fica ao lado do card (à direita; à esquerda se não couber) e, da metade da tela para baixo,
+ * cresce para cima -- assim não precisa medir a própria altura antes de aparecer.
+ */
+function ItemTooltip({ item, rect, effectsError }: { item: ItemCatalogEntry; rect: DOMRect; effectsError?: string }) {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const fitsRight = rect.right + TOOLTIP_GAP + TOOLTIP_WIDTH <= viewportWidth - 8;
+  const left = fitsRight ? rect.right + TOOLTIP_GAP : Math.max(8, rect.left - TOOLTIP_GAP - TOOLTIP_WIDTH);
+  const vertical = rect.top < viewportHeight / 2
+    ? { top: Math.max(8, rect.top) }
+    : { bottom: Math.max(8, viewportHeight - rect.bottom) };
+
+  const stats = [
+    ["Ataque físico", statValue(item.physicalOffence)],
+    ["Ataque de energia", statValue(item.energyOffence)],
+    ["Defesa física", statValue(item.physicalDefence)],
+    ["Defesa de energia", statValue(item.energyDefence)],
+    ["Durabilidade", item.durability === 255 || item.durability === 0 ? null : item.durability],
+  ].filter((entry): entry is [string, number] => entry[1] !== null);
+
+  return <div id="item-tooltip" role="tooltip" className={`itemTooltip rank${item.rank}`} style={{ left, width: TOOLTIP_WIDTH, ...vertical }}>
+    <div className="itemTooltipHead">
+      <ItemIcon item={item} />
+      <div><strong>{item.name}</strong><code>#{item.tblidx}</code></div>
+    </div>
+    <p className="itemTooltipMeta">{typeName(item.itemType)} · {rankName(item.rank)} · Nível {levelLabel(item)}</p>
+    {stats.length > 0 && <dl className="itemTooltipStats">{stats.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{formatNumber(value)}</dd></div>)}</dl>}
+    <ItemEffectsList item={item} effectsError={effectsError} />
+    {item.description && <p className="itemTooltipNote">{item.description}</p>}
+    <p className="itemTooltipFoot">Compra {formatNumber(item.cost)} · Venda {formatNumber(item.sellPrice)} · clique para os detalhes</p>
+  </div>;
+}
+
+/** Efeitos da opção fixa e do uso, no texto que o jogo mostra. Some quando o item não tem nenhum. */
+function ItemEffectsList({ item, effectsError }: { item: ItemCatalogEntry; effectsError?: string }) {
+  if (!item.effects) {
+    return effectsError ? <p className="itemEffectsMissing">Efeitos indisponíveis: {effectsError}</p> : null;
+  }
+  const { option, use } = item.effects;
+  const duration = use ? durationLabel(use.durationSeconds) : null;
+  const cooldown = use ? durationLabel(use.cooldownSeconds) : null;
+
+  return <>
+    {option && <section className="itemEffects">
+      <h4>Efeito do item <small>opção #{option.tblidx}</small></h4>
+      <ul>{option.lines.map((line, index) => <li key={index}>{line}</li>)}</ul>
+    </section>}
+    {use && <section className="itemEffects use">
+      <h4>Ao usar <small>uso #{use.tblidx}</small></h4>
+      <ul>{use.lines.map((line, index) => <li key={index}>{line}</li>)}</ul>
+      {(duration || cooldown) && <p>{[duration && `Duração ${duration}`, cooldown && `Recarga ${cooldown}`].filter(Boolean).join(" · ")}</p>}
+    </section>}
+  </>;
 }
 
 function ItemDetails({ item, onClose }: { item: ItemCatalogEntry; onClose: () => void }) {
@@ -252,7 +375,7 @@ function ItemDetails({ item, onClose }: { item: ItemCatalogEntry; onClose: () =>
     ["Tipo", `${typeName(item.itemType)} (${item.itemType})`], ["Equipamento", `${EQUIP_TYPE_NAMES[item.equipType] ?? "Tipo desconhecido"} (${item.equipType})`],
     ["Slots", `${slotNames(item.equipSlotFlag)} (0x${item.equipSlotFlag.toString(16).toUpperCase()})`], ["Rank", `${rankName(item.rank)} (${item.rank})`],
     ["Pilha máxima", item.maxStack], ["Durabilidade", item.durability], ["Peso", item.weight],
-    ["Ataque físico", item.physicalOffence], ["Ataque de energia", item.energyOffence], ["Defesa física", item.physicalDefence], ["Defesa de energia", item.energyDefence],
+    ["Ataque físico", statValue(item.physicalOffence) ?? "—"], ["Ataque de energia", statValue(item.energyOffence) ?? "—"], ["Defesa física", statValue(item.physicalDefence) ?? "—"], ["Defesa de energia", statValue(item.energyDefence) ?? "—"],
     ["Alcance adicional", formatNumber(item.attackRangeBonus)], ["Velocidade de ataque", item.attackSpeedRate],
     ["Nível mínimo", item.minimumLevel], ["Nível máximo", item.maximumLevel], ["Classe (flag)", `0x${item.classFlag.toString(16).toUpperCase()}`], ["Gênero (flag)", `0x${item.genderFlag.toString(16).toUpperCase()}`],
     ["Classe especial", item.classSpecial], ["Raça especial", item.raceSpecial], ["Atributo de batalha", item.battleAttribute],
@@ -263,6 +386,8 @@ function ItemDetails({ item, onClose }: { item: ItemCatalogEntry; onClose: () =>
     <section className="editorModal itemDetailsModal" role="dialog" aria-modal="true" aria-labelledby="item-details-title">
       <div className="modalHeader"><div><div className="eyebrow">ITEM DO CATÁLOGO</div><h2 id="item-details-title">{item.name}</h2><p>#{item.tblidx} · {item.iconName || "sem ícone"}</p></div><button className="closeButton" onClick={onClose} aria-label="Fechar">×</button></div>
       <div className="modelNames"><span>Modelo <code>{item.modelName || "—"}</code></span><span>Subarma <code>{item.subWeaponModelName || "—"}</code></span></div>
+      {item.description && <p className="itemTooltipNote">{item.description}</p>}
+      <ItemEffectsList item={item} />
       <div className="itemDetailGrid">{details.map(([label, value]) => <div key={String(label)}><small>{label}</small><strong>{value}</strong></div>)}</div>
       <GambleRewards item={item} />
       <div className="readonlyNotice"><strong>Consulta somente leitura</strong><span>Esta tela não altera o RDF e não entrega o item a nenhum jogador.</span></div>

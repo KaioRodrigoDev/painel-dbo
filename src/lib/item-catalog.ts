@@ -156,8 +156,15 @@ export async function loadCashShopItemMappings() {
   return mappings;
 }
 
-function parseLocalizedItemNames(buffer: Buffer) {
-  const names = new Map<number, string>();
+/**
+ * Seções de table_text_all_data.rdf, na ordem de CTextAllTable::TABLETYPE (TextAllTable.h).
+ * Só as que o painel lê.
+ */
+export const TEXT_SECTION = { itemData: 3, systemEffect: 8 } as const;
+
+/** Uma seção da tabela de textos: id do texto -> texto. */
+export function parseTextSection(buffer: Buffer, section: number) {
+  const texts = new Map<number, string>();
   let offset = 0;
 
   while (offset + 8 <= buffer.length) {
@@ -169,29 +176,33 @@ function parseLocalizedItemNames(buffer: Buffer) {
       throw new Error("Formato de table_text_all_data.rdf incompatível.");
     }
 
-    if (tableType === 3) {
+    if (tableType === section) {
       let textOffset = payloadStart + 1;
       while (textOffset < payloadEnd) {
         if (textOffset + 6 > payloadEnd) {
-          throw new Error("Registro de texto de item incompleto.");
+          throw new Error(`Registro de texto incompleto na seção ${section}.`);
         }
         const textId = buffer.readUInt32LE(textOffset);
         const textLength = buffer.readUInt16LE(textOffset + 4);
         const byteLength = textLength * 2;
         textOffset += 6;
         if (textOffset + byteLength > payloadEnd) {
-          throw new Error("Texto de item ultrapassa o tamanho da tabela.");
+          throw new Error(`Texto da seção ${section} ultrapassa o tamanho da tabela.`);
         }
-        names.set(textId, buffer.toString("utf16le", textOffset, textOffset + byteLength));
+        texts.set(textId, buffer.toString("utf16le", textOffset, textOffset + byteLength));
         textOffset += byteLength;
       }
-      return names;
+      return texts;
     }
 
     offset = payloadEnd;
   }
 
-  throw new Error("A seção de nomes dos itens não foi encontrada na tabela de textos.");
+  throw new Error(`A seção ${section} não foi encontrada na tabela de textos.`);
+}
+
+function parseLocalizedItemNames(buffer: Buffer) {
+  return parseTextSection(buffer, TEXT_SECTION.itemData);
 }
 
 export async function loadItemCatalog() {

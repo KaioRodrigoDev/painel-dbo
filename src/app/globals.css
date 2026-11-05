@@ -742,6 +742,104 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(var(--accen
 
 .itemCatalogPanel { display: grid; gap: 4px; }
 .itemFilters { display: grid; grid-template-columns: minmax(260px, 1fr) 180px 160px auto auto; gap: 10px; }
+/* O catálogo de itens tem um filtro a mais (faixa de nível); as outras telas usam o grid acima. */
+.itemFilters.itemCatalogFilters { grid-template-columns: minmax(240px, 1fr) 180px 160px 158px auto auto; }
+@media (max-width: 1320px) and (min-width: 761px) {
+  .itemFilters.itemCatalogFilters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto auto; }
+  .itemFilters.itemCatalogFilters .searchInputWrap { grid-column: 1 / -1; }
+}
+/* Faixa de nível: um campo só, com os dois números lado a lado, da altura dos selects. */
+.levelRange {
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--input-bg);
+}
+.levelRange:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.2); }
+.levelRange legend { float: left; margin-right: 4px; padding: 0; color: var(--faint); font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.levelRange span { color: var(--faint); }
+.levelRange input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  font-family: var(--font-mono);
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.levelRange input::-webkit-outer-spin-button, .levelRange input::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
+.levelRange input:focus { background: rgba(255, 255, 255, 0.06); }
+.levelRange input::placeholder { color: var(--faint); }
+
+/* Tooltip do item (hover no card): o mesmo recorte de informação do tooltip do jogo. */
+.itemTooltip {
+  --rank: 148 163 214;
+  position: fixed;
+  z-index: 45;
+  max-height: calc(100vh - 16px);
+  display: grid;
+  gap: 9px;
+  overflow: auto;
+  padding: 14px 16px;
+  /* Tem que se destacar dos cards em volta, que usam o mesmo fundo escuro: fundo mais claro e
+     opaco, borda na cor do rank com brilho, e uma sombra que escurece o que está atrás. */
+  border: 1.5px solid rgb(var(--rank) / 0.85);
+  border-radius: 12px;
+  color: var(--ink);
+  background:
+    radial-gradient(120% 60% at 0% 0%, rgb(var(--rank) / 0.16), transparent 60%),
+    linear-gradient(180deg, #1c2440, #141a2e);
+  box-shadow:
+    inset 0 3px rgb(var(--rank)),
+    0 0 0 4px rgb(var(--rank) / 0.14),
+    0 0 28px rgb(var(--rank) / 0.28),
+    0 24px 60px rgba(0, 0, 0, 0.75);
+  font-size: 12px;
+  pointer-events: none;
+  animation: itemTooltipIn 0.12s ease-out;
+}
+@keyframes itemTooltipIn { from { opacity: 0; transform: translateY(4px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .itemTooltip { animation: none; } }
+.itemTooltip .itemTooltipStats { background: rgba(0, 0, 0, 0.32); }
+.itemTooltip .itemTooltipFoot { border-top-color: var(--line); }
+.itemTooltip.rank2 { --rank: 52 211 153; }
+.itemTooltip.rank3 { --rank: 91 140 255; }
+.itemTooltip.rank4 { --rank: 192 132 252; }
+.itemTooltip.rank5 { --rank: 246 201 69; }
+.itemTooltipHead { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.itemTooltipHead > div { min-width: 0; display: grid; gap: 3px; }
+.itemTooltipHead strong { color: rgb(var(--rank)); font-size: 13px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.itemTooltipHead code { color: var(--blue-ink); font-family: var(--font-mono); font-size: 10px; }
+.itemTooltipHead .itemIconPlaceholder { width: 40px; height: 40px; }
+.itemTooltipMeta { margin: 0; color: var(--muted); font-size: 11px; }
+.itemTooltipStats { display: grid; gap: 3px; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--sub-2); }
+.itemTooltipStats > div { display: flex; justify-content: space-between; gap: 12px; }
+.itemTooltipStats dt { color: var(--muted); font-size: 11px; }
+.itemTooltipStats dd { margin: 0; font-family: var(--font-mono); font-size: 11px; }
+.itemEffects { display: grid; gap: 5px; }
+.itemEffects h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; color: var(--faint); font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.itemEffects h4 small { font-family: var(--font-mono); font-size: 9px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.itemEffects ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.itemEffects li { position: relative; padding-left: 12px; color: var(--green-ink); font-size: 12px; line-height: 1.4; }
+.itemEffects li::before { content: ""; position: absolute; top: 0.55em; left: 2px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.itemEffects.use li { color: var(--blue-ink); }
+.itemEffects p { margin: 0; color: var(--muted); font-size: 11px; }
+.itemTooltipNote { margin: 0; color: var(--muted); font-size: 11px; font-style: italic; line-height: 1.5; }
+.itemTooltipFoot { margin: 0; padding-top: 8px; border-top: 1px solid var(--line-soft); color: var(--faint); font-size: 10px; }
+.itemEffectsMissing { margin: 0; color: var(--amber-ink); font-size: 11px; }
+.itemDetailsModal .itemEffects { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--sub); }
+.itemDetailsModal > .itemTooltipNote { padding: 0 2px; }
 .itemFilters select {
   min-width: 0;
   height: 44px;
@@ -1253,6 +1351,8 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(var(--accen
   .serverToolbarActions .primaryButton { flex: 1; }
   .itemFilters { grid-template-columns: 1fr 1fr; }
   .itemFilters .searchInputWrap { grid-column: 1 / -1; }
+  .itemFilters.itemCatalogFilters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .itemFilters .levelRange { grid-column: 1 / -1; }
   .skillFilters { grid-template-columns: 1fr 1fr; }
   .catalogSource > span { display: none; }
   .draftCreatorHeader { flex-direction: column; }

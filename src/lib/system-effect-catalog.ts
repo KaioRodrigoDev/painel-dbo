@@ -72,6 +72,7 @@ export async function loadSystemEffectCatalog() {
       activeEffectType: buffer.readUInt8(offset + OFFSETS.activeEffectType),
       effectCode: buffer.readUInt32LE(offset + OFFSETS.effectCode),
       successEffectName: readFixedAscii(buffer, offset + OFFSETS.successEffect, 33),
+      infoTextId: buffer.readUInt32LE(offset + OFFSETS.infoTextId),
     };
     effects.push(entry);
     byTblidx.set(entry.tblidx, entry);
