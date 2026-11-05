@@ -1,0 +1,19 @@
+# O build roda dentro da imagem: nada do que já existe aqui precisa subir no contexto.
+node_modules
+.next
+out
+
+# Segredos e dados da instalação local. Na VPS tudo vem do compose, e data/ é volume.
+.env
+.env.*
+!.env.example
+data/
+
+.git
+.gitignore
+
+# Notas internas de desenvolvimento e o empacotador para Windows.
+*.md
+!README.md
+deploy/
+Iniciar painel.bat

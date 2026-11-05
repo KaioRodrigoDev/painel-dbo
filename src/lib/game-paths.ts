@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { findClientPackNextToPanel, findExecutionEnvNextToPanel } from "@/lib/game-folders.mjs";
@@ -42,6 +43,28 @@ export function resolveExecutionEnv() {
 }
 
 /**
+ * Acha o arquivo mesmo quando so as maiusculas diferem.
+ *
+ * O painel nasceu no Windows, onde `table_text_all_data.rdf` e `Table_Text_All_Data.rdf` sao o
+ * mesmo arquivo. No Linux nao sao, e os nomes gravados no codigo nem sempre batem com os da
+ * instalacao. So varre a pasta quando o nome exato falha: em quem ja esta certo nao custa nada.
+ */
+function acharIgnorandoCaixa(pasta: string, nomeDoArquivo: string) {
+  const exato = path.join(pasta, nomeDoArquivo);
+  if (existsSync(/* turbopackIgnore: true */ exato)) return exato;
+
+  try {
+    const alvo = nomeDoArquivo.toLowerCase();
+    const achado = readdirSync(/* turbopackIgnore: true */ pasta).find((item) => item.toLowerCase() === alvo);
+    if (achado) return path.join(pasta, achado);
+  } catch {
+    // Pasta inexistente ou sem permissao: devolve o caminho exato, e quem for ler
+    // produz a mensagem de erro com o caminho que procurou.
+  }
+  return exato;
+}
+
+/**
  * Uma tabela .rdf do servidor, pelo nome do arquivo.
  *
  * `variavelDeAjuste` e o nome da variavel de ambiente que sobrescreve so esta tabela.
@@ -50,7 +73,7 @@ export function resolveServerTable(nomeDoArquivo: string, variavelDeAjuste?: str
   const ajuste = variavelDeAjuste ? process.env[variavelDeAjuste] : undefined;
   if (ajuste) return path.resolve(ajuste);
 
-  return path.join(/* turbopackIgnore: true */ resolveExecutionEnv(), ...SUBPASTA_TABELAS, nomeDoArquivo);
+  return acharIgnorandoCaixa(path.join(/* turbopackIgnore: true */ resolveExecutionEnv(), ...SUBPASTA_TABELAS), nomeDoArquivo);
 }
 
 /** Pasta `pack` do cliente, onde ficam tbl.pak, gui.pak, tex.pak e as unidades. */
