@@ -61,7 +61,7 @@ export class AdminActionError extends Error {
 }
 
 export const QUEUE_DISABLED_MESSAGE = {
-  character: "O QueryServer do MDBO ainda não processa edições de personagem feitas pelo painel; a solicitação ficaria pendente para sempre. Ligue MDBO_ADMIN_QUEUES=character no .env.local quando o servidor passar a ler admin_character_updates.",
+  character: "Edição de personagem desligada. Ligue MDBO_ADMIN_QUEUES=character no .env.local; o QueryServer precisa ser a versão com AdminCharacterUpdateQueue, que lê admin_character_updates.",
   mail: "O QueryServer do MDBO ainda não entrega itens enviados pelo painel por correio. Ligue MDBO_ADMIN_QUEUES=mail no .env.local quando o servidor passar a ler admin_mail_items.",
   cashshop: "O QueryServer do MDBO ainda não entrega itens enviados pelo painel ao Cash Shop. Ligue MDBO_ADMIN_QUEUES=cashshop no .env.local quando o servidor passar a ler admin_cashshop_items.",
 };

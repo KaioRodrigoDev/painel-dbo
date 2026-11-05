@@ -332,7 +332,9 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
                         <div className="characterHeader">
                           <div><strong>{character.name}</strong><span>Personagem #{character.charId}</span></div>
                           {character.pendingUpdate ? (
-                            <span className="pendingBadge">Alteração pendente</span>
+                            <span className="pendingBadge" title={character.pendingUpdate.status === "waiting_logout" ? "A conta está no jogo; o QueryServer aplica quando ela sair ou trocar de canal" : "O QueryServer aplica em alguns segundos"}>
+                              {character.pendingUpdate.status === "waiting_logout" ? "Aguardando sair do jogo" : "Alteração pendente"}
+                            </span>
                           ) : (
                             <span className={character.online ? "onlineBadge" : "offlineBadge"}>{character.online ? "Online" : "Offline"}</span>
                           )}
@@ -351,10 +353,10 @@ export function AdminDashboard({ administrator, maxCharacterLevel }: Props) {
                         <button
                           className="secondaryButton"
                           disabled={Boolean(character.pendingUpdate) || !data.integrations.characterEdits}
-                          title={!data.integrations.characterEdits ? "O QueryServer do MDBO ainda não aplica edições feitas pelo painel; a solicitação ficaria pendente para sempre" : character.pendingUpdate ? "Aguarde o QueryServer concluir a solicitação" : "Editar personagem"}
+                          title={!data.integrations.characterEdits ? "Edição de personagem desligada: ligue MDBO_ADMIN_QUEUES=character no .env.local (o QueryServer precisa ser a versão com AdminCharacterUpdateQueue)" : character.pendingUpdate ? "Aguarde o QueryServer concluir a solicitação" : "Editar personagem"}
                           onClick={() => setEditing({ character, cash: account.mallPoints })}
                         >
-                          {!data.integrations.characterEdits ? "Edição indisponível no MDBO" : character.pendingUpdate ? "Processamento pendente" : character.online ? "Editar e enviar à seleção" : "Editar personagem"}
+                          {!data.integrations.characterEdits ? "Edição desligada" : character.pendingUpdate ? "Processamento pendente" : "Editar personagem"}
                         </button>
                       </article>
                     ))}
@@ -496,10 +498,10 @@ function CharacterEditor({ character, cash, maxLevel, onClose, onSaved }: {
             <label>Zeni<input type="number" min={0} max={4294967295} value={values.money} onChange={(event) => setNumber("money", event.target.value)} required /></label>
             <label>Cash<input type="number" min={0} max={4294967295} value={values.cash} onChange={(event) => setNumber("cash", event.target.value)} required /></label>
           </div>
-          {character.online && <div className="disconnectNotice"><strong>Personagem online</strong><span>Ao salvar, ele será enviado à seleção antes da alteração administrativa.</span></div>}
+          <div className="disconnectNotice"><strong>Se a conta estiver no jogo</strong><span>A alteração espera o jogador sair ou trocar de canal e é aplicada na hora em que ele sai. Só os campos que você mudar são gravados: o zeni que ele ganhar até lá não é desfeito por uma troca de nível.</span></div>
           <div className="readonlyNotice"><strong>Campos protegidos</strong><span>Raça, classe, gênero e estado adulto exigirão integração adicional e não são editados diretamente.</span></div>
           {error && <div className="formError" role="alert">{error}</div>}
-          <div className="modalActions"><button type="button" className="ghostButton" onClick={onClose}>Cancelar</button><button className="primaryButton compact" disabled={pending}>{pending ? "Enviando..." : character.online ? "Salvar e enviar à seleção" : "Solicitar alteração"}</button></div>
+          <div className="modalActions"><button type="button" className="ghostButton" onClick={onClose}>Cancelar</button><button className="primaryButton compact" disabled={pending}>{pending ? "Enviando..." : "Solicitar alteração"}</button></div>
         </form>
       </section>
     </div>

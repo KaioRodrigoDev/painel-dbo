@@ -69,7 +69,7 @@ export async function PATCH(
     return NextResponse.json({
       character: result.character,
       updateId: result.updateId,
-      message: "Solicitação registrada. O QueryServer aplicará os valores com segurança.",
+      message: "Solicitação registrada. O QueryServer aplica em alguns segundos; se a conta estiver no jogo, quando o jogador sair.",
     });
   } catch (error) {
     if (error instanceof AdminActionError) return NextResponse.json({ error: error.message }, { status: error.status });
